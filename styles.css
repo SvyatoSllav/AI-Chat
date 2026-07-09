@@ -1,0 +1,42 @@
+.vaultmind {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.vm-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.vm-msg {
+  padding: 8px 12px;
+  border-radius: 8px;
+  max-width: 95%;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.vm-user {
+  align-self: flex-end;
+  background: var(--background-secondary);
+}
+.vm-assistant {
+  align-self: flex-start;
+  background: var(--background-primary-alt);
+}
+.vm-assistant .markdown-rendered {
+  white-space: normal;
+}
+.vm-input {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+  border-top: 1px solid var(--background-modifier-border);
+}
+.vm-input textarea {
+  flex: 1;
+  resize: none;
+  min-height: 44px;
+}

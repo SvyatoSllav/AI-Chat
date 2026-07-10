@@ -53,7 +53,7 @@ export class VaultIndex {
       this.chunksByPath.set(file.path, chunks);
       this.mini.addAll(chunks);
     } catch (e) {
-      console.warn(`VaultMind: failed to index ${file.path}`, e);
+      console.warn(`ZettelkastenAI: failed to index ${file.path}`, e);
     }
   }
 

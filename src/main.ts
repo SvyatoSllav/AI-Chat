@@ -1,12 +1,12 @@
 import { Plugin, TFile } from "obsidian";
-import { DEFAULT_SETTINGS, VaultMindSettings, VaultMindSettingTab } from "./settings";
+import { DEFAULT_SETTINGS, ZettelkastenAISettings, ZettelkastenAISettingTab } from "./settings";
 import { VaultIndex } from "./rag/indexer";
 import { createProvider } from "./providers";
 import { LLMProvider } from "./providers/types";
 import { ChatView, VIEW_TYPE_CHAT } from "./ui/chatView";
 
-export default class VaultMindPlugin extends Plugin {
-  settings!: VaultMindSettings;
+export default class ZettelkastenAIPlugin extends Plugin {
+  settings!: ZettelkastenAISettings;
   index!: VaultIndex;
   private provider: LLMProvider | null = null;
   private statusEl!: HTMLElement;
@@ -17,10 +17,10 @@ export default class VaultMindPlugin extends Plugin {
     this.statusEl = this.addStatusBarItem();
 
     this.registerView(VIEW_TYPE_CHAT, (leaf) => new ChatView(leaf, this));
-    this.addRibbonIcon("message-square", "Open VaultMind chat", () => void this.activateChat());
+    this.addRibbonIcon("message-square", "Open ZettelkastenAI chat", () => void this.activateChat());
     this.addCommand({ id: "open-chat", name: "Open chat", callback: () => void this.activateChat() });
     this.addCommand({ id: "reindex", name: "Rebuild vault index", callback: () => void this.buildIndex() });
-    this.addSettingTab(new VaultMindSettingTab(this.app, this));
+    this.addSettingTab(new ZettelkastenAISettingTab(this.app, this));
 
     // Index after layout is ready, never at app start (docs/large-vault.md §1)
     this.app.workspace.onLayoutReady(() => {
@@ -50,8 +50,8 @@ export default class VaultMindPlugin extends Plugin {
 
   private async buildIndex() {
     const t0 = Date.now();
-    await this.index.build((done, total) => this.statusEl.setText(`VaultMind: indexing ${done}/${total}`));
-    this.statusEl.setText(`VaultMind: indexed in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+    await this.index.build((done, total) => this.statusEl.setText(`ZettelkastenAI: indexing ${done}/${total}`));
+    this.statusEl.setText(`ZettelkastenAI: indexed in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
     window.setTimeout(() => this.statusEl.setText(""), 5000);
   }
 

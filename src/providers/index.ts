@@ -1,9 +1,9 @@
-import type { VaultMindSettings } from "../settings";
+import type { ZettelkastenAISettings } from "../settings";
 import { LLMProvider } from "./types";
 import { OpenAICompatibleProvider } from "./openaiCompatible";
 import { ClaudeCodeProvider } from "./claudeCode";
 
-export function createProvider(s: VaultMindSettings): LLMProvider {
+export function createProvider(s: ZettelkastenAISettings): LLMProvider {
   switch (s.provider) {
     case "claude-code":
       return new ClaudeCodeProvider(s.claudeCodePath);

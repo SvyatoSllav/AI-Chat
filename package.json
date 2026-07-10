@@ -1,7 +1,7 @@
 {
-  "name": "vaultmind",
+  "name": "zettelkasten-ai",
   "version": "0.1.0",
-  "description": "VaultMind — chat with your Obsidian vault (RAG)",
+  "description": "ZettelkastenAI — chat with your Obsidian vault (RAG)",
   "main": "main.js",
   "scripts": {
     "dev": "node esbuild.config.mjs",

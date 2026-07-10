@@ -1,9 +1,9 @@
 import { App, Platform, PluginSettingTab, Setting } from "obsidian";
-import type VaultMindPlugin from "./main";
+import type ZettelkastenAIPlugin from "./main";
 
 export type ProviderId = "claude-code" | "openai-compatible";
 
-export interface VaultMindSettings {
+export interface ZettelkastenAISettings {
   provider: ProviderId;
   baseUrl: string;
   apiKey: string;
@@ -16,7 +16,7 @@ export interface VaultMindSettings {
 
 // Dev default is Claude Code CLI (desktop). Prod default flips to GLM 5.2
 // via backend-issued credentials — see PLAN.md §0 and §3.
-export const DEFAULT_SETTINGS: VaultMindSettings = {
+export const DEFAULT_SETTINGS: ZettelkastenAISettings = {
   provider: Platform.isDesktopApp ? "claude-code" : "openai-compatible",
   baseUrl: "https://api.deepseek.com/v1",
   apiKey: "",
@@ -27,8 +27,8 @@ export const DEFAULT_SETTINGS: VaultMindSettings = {
   debugMode: false,
 };
 
-export class VaultMindSettingTab extends PluginSettingTab {
-  constructor(app: App, private plugin: VaultMindPlugin) {
+export class ZettelkastenAISettingTab extends PluginSettingTab {
+  constructor(app: App, private plugin: ZettelkastenAIPlugin) {
     super(app, plugin);
   }
 

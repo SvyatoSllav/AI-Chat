@@ -1,8 +1,8 @@
 import { ItemView, MarkdownRenderer, WorkspaceLeaf } from "obsidian";
-import type VaultMindPlugin from "../main";
+import type ZettelkastenAIPlugin from "../main";
 import { ChatMessage } from "../providers/types";
 
-export const VIEW_TYPE_CHAT = "vaultmind-chat";
+export const VIEW_TYPE_CHAT = "zettelkasten-ai-chat";
 
 export class ChatView extends ItemView {
   private history: ChatMessage[] = [];
@@ -10,7 +10,7 @@ export class ChatView extends ItemView {
   private inputEl!: HTMLTextAreaElement;
   private abort?: AbortController;
 
-  constructor(leaf: WorkspaceLeaf, private plugin: VaultMindPlugin) {
+  constructor(leaf: WorkspaceLeaf, private plugin: ZettelkastenAIPlugin) {
     super(leaf);
   }
 
@@ -18,7 +18,7 @@ export class ChatView extends ItemView {
     return VIEW_TYPE_CHAT;
   }
   getDisplayText() {
-    return "VaultMind";
+    return "ZettelkastenAI";
   }
   getIcon() {
     return "message-square";
@@ -27,7 +27,7 @@ export class ChatView extends ItemView {
   async onOpen() {
     const root = this.contentEl;
     root.empty();
-    root.addClass("vaultmind");
+    root.addClass("zettelkasten-ai");
     this.msgsEl = root.createDiv({ cls: "vm-messages" });
     const form = root.createDiv({ cls: "vm-input" });
     this.inputEl = form.createEl("textarea", {
@@ -73,7 +73,7 @@ export class ChatView extends ItemView {
     }
 
     const system = [
-      "You are VaultMind, an assistant living inside the user's Obsidian vault.",
+      "You are ZettelkastenAI, an assistant living inside the user's Obsidian vault.",
       context
         ? "Answer ONLY from the provided vault excerpts. Cite sources inline as [[wikilinks]]. If the excerpts do not contain the answer, say so plainly."
         : "Answer helpfully and concisely.",
@@ -101,6 +101,15 @@ export class ChatView extends ItemView {
       const md =
         full + (sources.length ? `\n\n---\nSources: ${sources.map((t) => `[[${t}]]`).join(" · ")}` : "");
       await MarkdownRenderer.render(this.app, md, el, "", this);
+      // MarkdownRenderer in a custom view doesn't wire up link navigation —
+      // open [[wikilink]] citations ourselves.
+      el.querySelectorAll<HTMLAnchorElement>("a.internal-link").forEach((a) => {
+        a.addEventListener("click", (e) => {
+          e.preventDefault();
+          const target = a.getAttribute("data-href") ?? a.textContent ?? "";
+          void this.app.workspace.openLinkText(target, "", false);
+        });
+      });
       this.history.push({ role: "user", content: q }, { role: "assistant", content: full });
     } catch (e) {
       el.setText(`⚠️ ${e instanceof Error ? e.message : String(e)}`);

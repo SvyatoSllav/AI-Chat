@@ -20,6 +20,7 @@ export interface ZettelkastenAISettings {
   autoApprove: boolean;
   maxSteps: number;
   effort: import("./agent/effort").EffortId;
+  modelChoice: import("./agent/modelRouter").ModelChoice;
 }
 
 // Default is the hosted subscription (GLM): sign in with email, 5 messages
@@ -40,6 +41,7 @@ export const DEFAULT_SETTINGS: ZettelkastenAISettings = {
   autoApprove: false,
   maxSteps: 12,
   effort: "medium",
+  modelChoice: "auto",
 };
 
 export class ZettelkastenAISettingTab extends PluginSettingTab {

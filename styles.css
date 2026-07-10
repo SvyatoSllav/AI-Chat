@@ -20,9 +20,14 @@
   transform: rotate(45deg);
   flex: 0 0 auto;
 }
-.zk-header-actions { display: flex; align-items: center; gap: 6px; }
-.zk-effort { height: 28px; }
+.zk-header-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+.zk-effort, .zk-model { height: 28px; font-size: 0.82em; max-width: 120px; }
 .zk-icon-btn { padding: 4px; }
+
+/* model badge + slash-command picker */
+.zk-model-badge { opacity: 0.8; }
+.zk-cmd .zk-cmd-btns { display: flex; gap: 6px; margin-top: 8px; flex-wrap: wrap; }
+.zk-cmd .zk-cmd-btns button { font-size: 0.85em; }
 
 /* ---- welcome ---- */
 .zk-welcome { margin: auto 0; padding: 24px 12px; text-align: center; color: var(--text-muted); }

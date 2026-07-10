@@ -4,6 +4,13 @@ import { ChatMessage } from "../providers/types";
 import { runAgent, agentSystemPrompt, AgentStep } from "../agent/agent";
 import { ToolResult } from "../agent/tools";
 import { EFFORTS, EFFORT_ORDER, EffortId } from "../agent/effort";
+import { chooseModel, MODELS, ModelChoice } from "../agent/modelRouter";
+
+const MODEL_OPTIONS: { value: ModelChoice; label: string }[] = [
+  { value: "auto", label: "Auto" },
+  { value: "fast", label: "GLM-4.5-air" },
+  { value: "smart", label: "GLM-5.2" },
+];
 
 export const VIEW_TYPE_CHAT = "zettelkasten-ai-chat";
 
@@ -60,6 +67,7 @@ export class ChatView extends ItemView {
     title.createSpan({ text: "ZettelkastenAI" });
 
     const actions = this.headerEl.createDiv({ cls: "zk-header-actions" });
+    this.buildModelSelector(actions);
     this.buildEffortSelector(actions);
     const newChat = actions.createEl("button", { cls: "clickable-icon zk-icon-btn", attr: { "aria-label": "New chat" } });
     setIcon(newChat, "plus");
@@ -83,6 +91,20 @@ export class ChatView extends ItemView {
     this.sendBtn.addEventListener("click", () => (this.running ? this.stop() : void this.send()));
 
     this.renderWelcome();
+  }
+
+  private modelSelect?: HTMLSelectElement;
+
+  private buildModelSelector(parent: HTMLElement) {
+    const sel = parent.createEl("select", { cls: "dropdown zk-model", attr: { "aria-label": "Model" } });
+    for (const o of MODEL_OPTIONS) sel.createEl("option", { value: o.value, text: o.label });
+    sel.value = this.plugin.settings.modelChoice;
+    sel.title = "Model — Auto picks GLM-4.5-air for simple tasks and GLM-5.2 for hard ones";
+    sel.addEventListener("change", async () => {
+      this.plugin.settings.modelChoice = sel.value as ModelChoice;
+      await this.plugin.saveSettings();
+    });
+    this.modelSelect = sel;
   }
 
   private buildEffortSelector(parent: HTMLElement) {
@@ -144,6 +166,12 @@ export class ChatView extends ItemView {
   private async send() {
     const q = this.inputEl.value.trim();
     if (!q || this.running) return;
+    if (q.startsWith("/")) {
+      this.inputEl.value = "";
+      this.autosize();
+      this.handleCommand(q);
+      return;
+    }
     this.inputEl.value = "";
     this.autosize();
     this.msgsEl.querySelector(".zk-welcome")?.remove();
@@ -161,11 +189,51 @@ export class ChatView extends ItemView {
     }
   }
 
+  private handleCommand(cmd: string) {
+    const [name, ...rest] = cmd.slice(1).trim().split(/\s+/);
+    const arg = (rest.join(" ") || "").toLowerCase();
+    if (name === "model") {
+      const map: Record<string, ModelChoice> = { auto: "auto", fast: "fast", air: "fast", "glm-4.5-air": "fast", smart: "smart", "5.2": "smart", "glm-5.2": "smart" };
+      if (arg && map[arg]) {
+        this.setModel(map[arg]);
+        return;
+      }
+      // no/unknown arg → show a picker
+      const wrap = this.msgsEl.createDiv({ cls: "vm-msg vm-assistant zk-cmd" });
+      wrap.createDiv({ text: `Model — current: ${this.modelLabel(this.plugin.settings.modelChoice)}. Pick one:` });
+      const row = wrap.createDiv({ cls: "zk-cmd-btns" });
+      for (const o of MODEL_OPTIONS) {
+        const b = row.createEl("button", { text: o.label, cls: o.value === this.plugin.settings.modelChoice ? "mod-cta" : "" });
+        b.addEventListener("click", () => this.setModel(o.value));
+      }
+      this.scroll();
+      return;
+    }
+    if (name === "help") {
+      this.renderMsg("assistant", "Commands:\n/model [auto|air|5.2] — choose the model (Auto = GLM-4.5-air for simple tasks, GLM-5.2 for hard ones).");
+      return;
+    }
+    this.renderMsg("assistant", `Unknown command /${name}. Try /model or /help.`);
+  }
+
+  private setModel(m: ModelChoice) {
+    this.plugin.settings.modelChoice = m;
+    void this.plugin.saveSettings();
+    if (this.modelSelect) this.modelSelect.value = m;
+    this.renderMsg("assistant", `Model set to ${this.modelLabel(m)}.`);
+  }
+
+  private modelLabel(m: ModelChoice): string {
+    return m === "auto" ? "Auto (air ⇄ 5.2)" : MODELS[m].label;
+  }
+
   private async sendAgent(q: string) {
     const s = this.plugin.settings;
     const effort = EFFORTS[s.effort];
     const provider = this.plugin.getProvider();
     const activePath = this.app.workspace.getActiveFile()?.path;
+    const routed = chooseModel(q, s.effort, s.modelChoice);
+    this.renderModelBadge(routed.tier, routed.reason);
 
     const messages: ChatMessage[] = [
       { role: "system", content: agentSystemPrompt(activePath, effort.directive) },
@@ -181,7 +249,7 @@ export class ChatView extends ItemView {
         this.app,
         this.plugin.index,
         messages,
-        { autoApprove: s.autoApprove, maxSteps: effort.maxSteps, modelTier: effort.modelTier, signal: this.abort!.signal },
+        { autoApprove: s.autoApprove, maxSteps: effort.maxSteps, modelTier: routed.tier, signal: this.abort!.signal },
         {
           onText: (text) => {
             if (!text.trim()) return;
@@ -205,6 +273,13 @@ export class ChatView extends ItemView {
       const msg = e instanceof Error ? e.message : String(e);
       if (!/abort/i.test(msg)) this.renderMsg("assistant", `⚠️ ${msg}`);
     }
+  }
+
+  private renderModelBadge(tier: "fast" | "smart", reason: string) {
+    const el = this.msgsEl.createDiv({ cls: "vm-step zk-model-badge" });
+    const icon = tier === "smart" ? "🧠" : "⚡";
+    el.createSpan({ cls: "vm-step-label", text: `${icon} ${MODELS[tier].label} · ${reason}` });
+    this.scroll();
   }
 
   private renderThinking(): HTMLElement {

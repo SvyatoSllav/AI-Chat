@@ -181,7 +181,7 @@ export class ChatView extends ItemView {
         this.app,
         this.plugin.index,
         messages,
-        { autoApprove: s.autoApprove, maxSteps: effort.maxSteps, signal: this.abort!.signal },
+        { autoApprove: s.autoApprove, maxSteps: effort.maxSteps, modelTier: effort.modelTier, signal: this.abort!.signal },
         {
           onText: (text) => {
             if (!text.trim()) return;

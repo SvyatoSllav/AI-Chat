@@ -9,6 +9,7 @@ export const AGENT_SYSTEM_PROMPT = [
   "Work in small concrete steps: to change a note, read it first, then edit it.",
   "CRITICAL: keep calling tools until the user's request is FULLY done. Searching or reading is never the end — after you gather information you must go on to actually read every relevant note and perform any requested create/edit/delete. Do NOT stop to narrate what you found or what you plan to do next; just make the next tool call.",
   "Only write your final plain-text answer once the task is completely finished (all notes read, all requested changes made).",
+  "GROUNDING: search results give you only titles and short snippets — enough to decide what to open, NOT enough to quote or summarize. Only state the specific contents of a note you have actually opened with read_note. Never quote, paraphrase in detail, or cite a note as a source unless you read it in full this turn, and never claim to have read notes you only saw in search results.",
   "Prefer [[wikilinks]] to connect notes, and keep the user's existing style, headings, and frontmatter.",
   "In your final answer, tell the user plainly what you did and cite the notes as [[wikilinks]].",
   "If a request is genuinely ambiguous, ask one brief clarifying question before acting; otherwise proceed.",
@@ -33,6 +34,7 @@ export interface AgentCallbacks {
 export interface AgentOptions {
   autoApprove: boolean;
   maxSteps: number;
+  modelTier?: "fast" | "smart";
   signal?: AbortSignal;
 }
 
@@ -64,7 +66,7 @@ export async function runAgent(
   for (let step = 0; step < opts.maxSteps; step++) {
     if (opts.signal?.aborted) throw new DOMException("Aborted", "AbortError");
 
-    const res = await provider.complete({ messages, tools: TOOL_SPECS, signal: opts.signal, firstOfTurn: step === 0 });
+    const res = await provider.complete({ messages, tools: TOOL_SPECS, signal: opts.signal, firstOfTurn: step === 0, model: opts.modelTier });
     if (res.text) {
       finalText = res.text;
       cb.onText(res.text);

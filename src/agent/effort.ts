@@ -6,6 +6,10 @@ export interface EffortProfile {
   hint: string;
   topK: number;
   maxSteps: number;
+  /** Which hosted model tier to use. "fast" = cheap/economical (GLM-4.5-air-
+   *  class), spends far less of the subscription quota; "smart" = flagship
+   *  (GLM-5.2). The backend maps these names to concrete models. */
+  modelTier: "fast" | "smart";
   /** Extra system-prompt directives; empty for the default behaviour. */
   directive: string;
 }
@@ -14,9 +18,10 @@ export const EFFORTS: Record<EffortId, EffortProfile> = {
   low: {
     id: "low",
     label: "Low",
-    hint: "Fastest — quick lookups, minimal reading",
+    hint: "Fastest & cheapest — economical model, saves your quota",
     topK: 4,
     maxSteps: 6,
+    modelTier: "fast",
     directive: "Be fast and economical: minimum tool calls, short answers. Don't explore beyond what's asked.",
   },
   medium: {
@@ -25,6 +30,7 @@ export const EFFORTS: Record<EffortId, EffortProfile> = {
     hint: "Balanced default",
     topK: 8,
     maxSteps: 12,
+    modelTier: "smart",
     directive: "",
   },
   high: {
@@ -33,6 +39,7 @@ export const EFFORTS: Record<EffortId, EffortProfile> = {
     hint: "Thorough — reads more notes before acting",
     topK: 12,
     maxSteps: 20,
+    modelTier: "smart",
     directive:
       "Be thorough: search with more than one phrasing, read every note that looks relevant before drawing conclusions or editing, and double-check paths before writing.",
   },
@@ -42,6 +49,7 @@ export const EFFORTS: Record<EffortId, EffortProfile> = {
     hint: "Research mode — plans, explores broadly, cross-checks",
     topK: 20,
     maxSteps: 30,
+    modelTier: "smart",
     directive: [
       "Research mode. Start by writing a brief plan of what you will look for.",
       "Explore broadly: run several searches with different phrasings and synonyms, follow [[wikilinks]] and backlinks you encounter, and read all plausibly relevant notes.",

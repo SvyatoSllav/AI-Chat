@@ -32,7 +32,7 @@ export async function completeWithTools(
     if (res.status === 401) throw new Error("Auth failed — check your key / sign in again.");
     if (res.status === 402) throw new Error(`${detail || "Free messages used up"}. Subscribe: ${checkoutUrl || "see settings"}`);
     if (res.status === 409) throw new Error(detail || "Agent mode is not available on this provider.");
-    if (res.status === 429) throw new Error("Rate limit — slow down and retry.");
+    if (res.status === 429) throw new Error(detail || "Usage limit reached — try again shortly, or switch to Low effort.");
     throw new Error(`Model HTTP ${res.status}: ${detail}`);
   }
   const msg = res.json?.choices?.[0]?.message ?? {};

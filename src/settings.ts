@@ -1,10 +1,14 @@
-import { App, Platform, PluginSettingTab, Setting } from "obsidian";
+import { App, Notice, PluginSettingTab, Setting } from "obsidian";
 import type ZettelkastenAIPlugin from "./main";
+import { fetchAccount, requestCode, verifyCode } from "./providers/hosted";
 
-export type ProviderId = "claude-code" | "openai-compatible";
+export type ProviderId = "hosted" | "claude-code" | "openai-compatible";
 
 export interface ZettelkastenAISettings {
   provider: ProviderId;
+  backendUrl: string;
+  authEmail: string;
+  authToken: string;
   baseUrl: string;
   apiKey: string;
   model: string;
@@ -14,10 +18,13 @@ export interface ZettelkastenAISettings {
   debugMode: boolean;
 }
 
-// Dev default is Claude Code CLI (desktop). Prod default flips to GLM 5.2
-// via backend-issued credentials — see PLAN.md §0 and §3.
+// Default is the hosted subscription (GLM): sign in with email, 5 messages
+// free, then paid. BYOK and Claude Code CLI stay available — see PLAN.md §3, §6.
 export const DEFAULT_SETTINGS: ZettelkastenAISettings = {
-  provider: Platform.isDesktopApp ? "claude-code" : "openai-compatible",
+  provider: "hosted",
+  backendUrl: "https://zettelkasten-ai.com",
+  authEmail: "",
+  authToken: "",
   baseUrl: "https://api.deepseek.com/v1",
   apiKey: "",
   model: "deepseek-chat",
@@ -40,11 +47,12 @@ export class ZettelkastenAISettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Provider")
-      .setDesc("Claude Code — dev default (desktop). OpenAI-compatible covers DeepSeek, OpenRouter, Ollama, Z.ai/GLM.")
+      .setDesc("ZettelkastenAI subscription — no API keys, 5 free messages. Or bring your own key / Claude Code CLI.")
       .addDropdown((d) =>
         d
+          .addOption("hosted", "ZettelkastenAI (subscription, no keys)")
+          .addOption("openai-compatible", "OpenAI-compatible endpoint (your key)")
           .addOption("claude-code", "Claude Code CLI (desktop)")
-          .addOption("openai-compatible", "OpenAI-compatible endpoint")
           .setValue(s.provider)
           .onChange(async (v) => {
             s.provider = v as ProviderId;
@@ -53,7 +61,9 @@ export class ZettelkastenAISettingTab extends PluginSettingTab {
           }),
       );
 
-    if (s.provider === "openai-compatible") {
+    if (s.provider === "hosted") {
+      this.displayAccount(containerEl);
+    } else if (s.provider === "openai-compatible") {
       new Setting(containerEl).setName("Base URL").addText((t) =>
         t.setValue(s.baseUrl).onChange(async (v) => {
           s.baseUrl = v.trim();
@@ -117,5 +127,73 @@ export class ZettelkastenAISettingTab extends PluginSettingTab {
           await save();
         }),
       );
+  }
+
+  private displayAccount(containerEl: HTMLElement): void {
+    const s = this.plugin.settings;
+    const save = () => this.plugin.saveSettings();
+
+    if (!s.authToken) {
+      let email = s.authEmail;
+      let code = "";
+      let codeSetting: Setting | null = null;
+
+      new Setting(containerEl)
+        .setName("Account")
+        .setDesc("Sign in with your email — we send a 6-digit code. 5 messages free, then subscription.")
+        .addText((t) => t.setPlaceholder("you@example.com").setValue(email).onChange((v) => (email = v.trim())))
+        .addButton((b) =>
+          b.setButtonText("Send code").setCta().onClick(async () => {
+            try {
+              await requestCode(s.backendUrl, email);
+              s.authEmail = email;
+              await save();
+              new Notice("Code sent — check your email.");
+              codeSetting?.settingEl.show();
+            } catch (e) {
+              new Notice(`⚠️ ${e instanceof Error ? e.message : e}`);
+            }
+          }),
+        );
+
+      codeSetting = new Setting(containerEl)
+        .setName("Verification code")
+        .addText((t) => t.setPlaceholder("123456").onChange((v) => (code = v.trim())))
+        .addButton((b) =>
+          b.setButtonText("Verify").setCta().onClick(async () => {
+            try {
+              s.authToken = await verifyCode(s.backendUrl, s.authEmail || email, code);
+              await save();
+              new Notice("Signed in ✓");
+              this.display();
+            } catch (e) {
+              new Notice(`⚠️ ${e instanceof Error ? e.message : e}`);
+            }
+          }),
+        );
+      if (!s.authEmail) codeSetting.settingEl.hide();
+      return;
+    }
+
+    const status = new Setting(containerEl).setName("Account").setDesc("Checking account…");
+    status.addButton((b) =>
+      b.setButtonText("Sign out").onClick(async () => {
+        s.authToken = "";
+        await save();
+        this.display();
+      }),
+    );
+    void fetchAccount(s.backendUrl, s.authToken)
+      .then((a) => {
+        status.setDesc(
+          a.pro
+            ? `${a.email} — Pro until ${new Date(a.proUntil!).toLocaleDateString()}`
+            : `${a.email} — free messages used: ${a.used}/${a.freeQuota}`,
+        );
+        if (!a.pro) {
+          status.addButton((b) => b.setButtonText("Subscribe").setCta().onClick(() => window.open(a.checkoutUrl)));
+        }
+      })
+      .catch((e) => status.setDesc(`⚠️ ${e instanceof Error ? e.message : e}`));
   }
 }

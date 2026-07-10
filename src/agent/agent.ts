@@ -34,6 +34,17 @@ export interface AgentOptions {
   signal?: AbortSignal;
 }
 
+/** Builds the agent system prompt, folding in the effort directive if any. */
+export function agentSystemPrompt(activePath: string | undefined, directive: string): string {
+  return [
+    AGENT_SYSTEM_PROMPT,
+    directive || "",
+    activePath ? `The user's currently open note is: ${activePath}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 /** Runs the tool-calling loop. Returns the final assistant text. */
 export async function runAgent(
   provider: LLMProvider,

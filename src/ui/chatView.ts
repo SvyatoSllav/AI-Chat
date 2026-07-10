@@ -1,8 +1,9 @@
-import { ItemView, MarkdownRenderer, WorkspaceLeaf } from "obsidian";
+import { ItemView, MarkdownRenderer, Notice, WorkspaceLeaf, setIcon } from "obsidian";
 import type ZettelkastenAIPlugin from "../main";
 import { ChatMessage } from "../providers/types";
-import { runAgent, AGENT_SYSTEM_PROMPT, AgentStep } from "../agent/agent";
+import { runAgent, agentSystemPrompt, AgentStep } from "../agent/agent";
 import { ToolResult } from "../agent/tools";
+import { EFFORTS, EFFORT_ORDER, EffortId } from "../agent/effort";
 
 export const VIEW_TYPE_CHAT = "zettelkasten-ai-chat";
 
@@ -17,11 +18,21 @@ const TOOL_ICONS: Record<string, string> = {
   delete_note: "🗑️",
 };
 
+const SUGGESTIONS = [
+  "Summarize my most-linked notes into a new MOC",
+  "What have I concluded about deep work?",
+  "Create a note from today's open note's key ideas",
+  "Find contradictions across my notes on habits",
+];
+
 export class ChatView extends ItemView {
   private history: ChatMessage[] = [];
+  private headerEl!: HTMLElement;
   private msgsEl!: HTMLElement;
   private inputEl!: HTMLTextAreaElement;
+  private sendBtn!: HTMLButtonElement;
   private abort?: AbortController;
+  private running = false;
 
   constructor(leaf: WorkspaceLeaf, private plugin: ZettelkastenAIPlugin) {
     super(leaf);
@@ -41,64 +52,142 @@ export class ChatView extends ItemView {
     const root = this.contentEl;
     root.empty();
     root.addClass("zettelkasten-ai");
+
+    // ---- header ----
+    this.headerEl = root.createDiv({ cls: "zk-header" });
+    const title = this.headerEl.createDiv({ cls: "zk-header-title" });
+    title.createSpan({ cls: "zk-logo" });
+    title.createSpan({ text: "ZettelkastenAI" });
+
+    const actions = this.headerEl.createDiv({ cls: "zk-header-actions" });
+    this.buildEffortSelector(actions);
+    const newChat = actions.createEl("button", { cls: "clickable-icon zk-icon-btn", attr: { "aria-label": "New chat" } });
+    setIcon(newChat, "plus");
+    newChat.addEventListener("click", () => this.resetConversation());
+
+    // ---- messages ----
     this.msgsEl = root.createDiv({ cls: "vm-messages" });
+
+    // ---- input ----
     const form = root.createDiv({ cls: "vm-input" });
-    this.inputEl = form.createEl("textarea", {
-      attr: { placeholder: "Ask or tell the agent… (Enter — send, Shift+Enter — newline)" },
-    });
+    this.inputEl = form.createEl("textarea", { attr: { rows: "1", placeholder: "Ask or tell the agent…  (Enter to send)" } });
+    this.inputEl.addEventListener("input", () => this.autosize());
     this.inputEl.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
-        void this.send();
+        this.running ? this.stop() : void this.send();
       }
     });
-    form.createEl("button", { text: "Send" }).addEventListener("click", () => void this.send());
+    this.sendBtn = form.createEl("button", { cls: "mod-cta zk-send" });
+    this.setSendState(false);
+    this.sendBtn.addEventListener("click", () => (this.running ? this.stop() : void this.send()));
+
+    this.renderWelcome();
+  }
+
+  private buildEffortSelector(parent: HTMLElement) {
+    const sel = parent.createEl("select", { cls: "dropdown zk-effort", attr: { "aria-label": "Effort" } });
+    for (const id of EFFORT_ORDER) {
+      const o = sel.createEl("option", { value: id, text: EFFORTS[id].label });
+      o.title = EFFORTS[id].hint;
+    }
+    sel.value = this.plugin.settings.effort;
+    sel.title = EFFORTS[this.plugin.settings.effort].hint;
+    sel.addEventListener("change", async () => {
+      this.plugin.settings.effort = sel.value as EffortId;
+      sel.title = EFFORTS[sel.value as EffortId].hint;
+      await this.plugin.saveSettings();
+    });
+  }
+
+  private renderWelcome() {
+    if (this.msgsEl.childElementCount) return;
+    const w = this.msgsEl.createDiv({ cls: "zk-welcome" });
+    w.createDiv({ cls: "zk-welcome-title", text: "What should we do in your vault?" });
+    w.createDiv({ cls: "zk-welcome-sub", text: "I can search, read, write and reorganize your notes. You approve every change." });
+    const chips = w.createDiv({ cls: "zk-suggestions" });
+    for (const s of SUGGESTIONS) {
+      const chip = chips.createEl("button", { cls: "zk-suggestion", text: s });
+      chip.addEventListener("click", () => {
+        this.inputEl.value = s;
+        this.autosize();
+        void this.send();
+      });
+    }
+  }
+
+  private resetConversation() {
+    if (this.running) this.stop();
+    this.history = [];
+    this.msgsEl.empty();
+    this.renderWelcome();
+    this.inputEl.focus();
+  }
+
+  private autosize() {
+    this.inputEl.style.height = "auto";
+    this.inputEl.style.height = Math.min(this.inputEl.scrollHeight, 160) + "px";
+  }
+
+  private setSendState(running: boolean) {
+    this.running = running;
+    this.sendBtn.empty();
+    setIcon(this.sendBtn, running ? "square" : "arrow-up");
+    this.sendBtn.setAttr("aria-label", running ? "Stop" : "Send");
+  }
+
+  private stop() {
+    this.abort?.abort();
+    this.setSendState(false);
   }
 
   private async send() {
     const q = this.inputEl.value.trim();
-    if (!q) return;
+    if (!q || this.running) return;
     this.inputEl.value = "";
+    this.autosize();
+    this.msgsEl.querySelector(".zk-welcome")?.remove();
     this.renderMsg("user", q);
 
     const s = this.plugin.settings;
     const provider = this.plugin.getProvider();
     this.abort = new AbortController();
-
-    if (s.agentMode && provider.complete) {
-      await this.sendAgent(q);
-    } else {
-      await this.sendPlain(q);
+    this.setSendState(true);
+    try {
+      if (s.agentMode && provider.complete) await this.sendAgent(q);
+      else await this.sendPlain(q);
+    } finally {
+      this.setSendState(false);
     }
   }
 
   private async sendAgent(q: string) {
     const s = this.plugin.settings;
+    const effort = EFFORTS[s.effort];
     const provider = this.plugin.getProvider();
     const activePath = this.app.workspace.getActiveFile()?.path;
 
     const messages: ChatMessage[] = [
-      { role: "system", content: AGENT_SYSTEM_PROMPT + (activePath ? `\n\nThe user's currently open note is: ${activePath}` : "") },
+      { role: "system", content: agentSystemPrompt(activePath, effort.directive) },
       ...this.history.slice(-8),
       { role: "user", content: q },
     ];
 
-    const thinking = this.renderMsg("assistant", "…");
-    let lastTextEl: HTMLElement | null = null;
-
+    const thinking = this.renderThinking();
+    let finalEl: HTMLElement | null = null;
     try {
       const finalText = await runAgent(
         provider,
         this.app,
         this.plugin.index,
         messages,
-        { autoApprove: s.autoApprove, maxSteps: s.maxSteps, signal: this.abort!.signal },
+        { autoApprove: s.autoApprove, maxSteps: effort.maxSteps, signal: this.abort!.signal },
         {
           onText: (text) => {
             if (!text.trim()) return;
             thinking.hide();
-            lastTextEl = this.msgsEl.createDiv({ cls: "vm-msg vm-assistant" });
-            void this.renderMarkdown(text, lastTextEl);
+            finalEl = this.msgsEl.createDiv({ cls: "vm-msg vm-assistant" });
+            void this.renderMarkdown(text, finalEl);
             this.scroll();
           },
           onStep: (step) => {
@@ -109,6 +198,7 @@ export class ChatView extends ItemView {
         },
       );
       thinking.remove();
+      if (finalEl) this.addCopyButton(finalEl, finalText);
       this.history.push({ role: "user", content: q }, { role: "assistant", content: finalText });
     } catch (e) {
       thinking.remove();
@@ -117,12 +207,20 @@ export class ChatView extends ItemView {
     }
   }
 
+  private renderThinking(): HTMLElement {
+    const el = this.msgsEl.createDiv({ cls: "vm-msg vm-assistant zk-thinking" });
+    el.createSpan({ cls: "zk-dot" });
+    el.createSpan({ cls: "zk-dot" });
+    el.createSpan({ cls: "zk-dot" });
+    this.scroll();
+    return el;
+  }
+
   private renderStep(step: AgentStep) {
     const el = this.msgsEl.createDiv({ cls: `vm-step vm-step-${step.status}` });
     const icon = TOOL_ICONS[step.name] ?? "🔧";
     const target = step.args?.path ?? step.args?.query ?? step.args?.folder ?? "";
-    const verb =
-      step.status === "rejected" ? "rejected" : step.status === "error" ? "failed" : step.name.replace(/_/g, " ");
+    const verb = step.status === "rejected" ? "rejected" : step.status === "error" ? "failed" : step.name.replace(/_/g, " ");
     el.createSpan({ cls: "vm-step-label", text: `${icon} ${verb}${target ? " — " + target : ""}` });
     if (step.status === "done" && step.output && step.name.startsWith("search")) {
       const det = el.createEl("details");
@@ -132,7 +230,6 @@ export class ChatView extends ItemView {
     this.scroll();
   }
 
-  /** Approval card with a diff; resolves true=approve, false=reject. */
   private askApproval(name: string, args: any, preview: ToolResult["preview"] | null): Promise<boolean> {
     return new Promise((resolve) => {
       const card = this.msgsEl.createDiv({ cls: "vm-approve" });
@@ -155,8 +252,7 @@ export class ChatView extends ItemView {
         card.createSpan({ cls: "vm-approve-verdict", text: ok ? "✓ approved" : "✕ rejected" });
         resolve(ok);
       };
-      const approve = btns.createEl("button", { cls: "mod-cta", text: "Approve" });
-      approve.addEventListener("click", () => done(true));
+      btns.createEl("button", { cls: "mod-cta", text: "Approve" }).addEventListener("click", () => done(true));
       btns.createEl("button", { text: "Reject" }).addEventListener("click", () => done(false));
       this.scroll();
     });
@@ -164,12 +260,11 @@ export class ChatView extends ItemView {
 
   private async sendPlain(q: string) {
     const s = this.plugin.settings;
-
     let context = "";
     let sources: string[] = [];
     if (s.vaultQA) {
       const active = this.app.workspace.getActiveFile()?.path;
-      const hits = this.plugin.index.search(q, s.topK, active);
+      const hits = this.plugin.index.search(q, EFFORTS[s.effort].topK, active);
       if (s.debugMode && hits.length) {
         this.renderMsg("assistant", "🔎 Debug — retrieved:\n" + hits.map((h, i) => `${i + 1}. ${h.title} (${h.score.toFixed(2)})`).join("\n"));
       }
@@ -197,21 +292,33 @@ export class ChatView extends ItemView {
       { role: "user", content: q },
     ];
 
-    const el = this.renderMsg("assistant", "…");
+    const el = this.renderThinking();
     try {
       let acc = "";
       const full = await this.plugin.getProvider().chat({ messages, signal: this.abort!.signal }, (delta) => {
         acc += delta;
+        el.removeClass("zk-thinking");
         el.setText(acc);
         this.scroll();
       });
-      el.empty();
       const md = full + (sources.length ? `\n\n---\nSources: ${sources.map((t) => `[[${t}]]`).join(" · ")}` : "");
+      el.removeClass("zk-thinking");
       await this.renderMarkdown(md, el);
+      this.addCopyButton(el, full);
       this.history.push({ role: "user", content: q }, { role: "assistant", content: full });
     } catch (e) {
-      el.setText(`⚠️ ${e instanceof Error ? e.message : String(e)}`);
+      const msg = e instanceof Error ? e.message : String(e);
+      el.setText(/abort/i.test(msg) ? "⏹ stopped" : `⚠️ ${msg}`);
     }
+  }
+
+  private addCopyButton(el: HTMLElement, text: string) {
+    const btn = el.createEl("button", { cls: "clickable-icon zk-copy", attr: { "aria-label": "Copy" } });
+    setIcon(btn, "copy");
+    btn.addEventListener("click", async () => {
+      await navigator.clipboard.writeText(text);
+      new Notice("Copied");
+    });
   }
 
   private async renderMarkdown(md: string, el: HTMLElement) {

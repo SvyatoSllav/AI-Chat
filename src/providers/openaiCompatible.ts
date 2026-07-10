@@ -1,3 +1,4 @@
+import { Platform, requestUrl } from "obsidian";
 import { ChatRequest, LLMProvider } from "./types";
 
 /**
@@ -16,22 +17,32 @@ export class OpenAICompatibleProvider implements LLMProvider {
 
   async chat(req: ChatRequest, onDelta: (chunk: string) => void): Promise<string> {
     const url = this.baseUrl.replace(/\/+$/, "") + "/chat/completions";
-    const res = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.apiKey}`,
-      },
-      body: JSON.stringify({
-        model: req.model ?? this.model,
-        messages: req.messages,
-        stream: true,
-      }),
-      signal: req.signal,
-    });
+    const body = {
+      model: req.model ?? this.model,
+      messages: req.messages,
+    };
+
+    let res: Response;
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${this.apiKey}`,
+        },
+        body: JSON.stringify({ ...body, stream: true }),
+        signal: req.signal,
+      });
+    } catch (e) {
+      if (req.signal?.aborted) throw e;
+      // Mobile: fetch is CORS-blocked for most providers. Fall back to
+      // Obsidian requestUrl (no CORS, no streaming) — answer arrives whole.
+      if (Platform.isMobileApp) return this.chatViaRequestUrl(url, body, onDelta);
+      throw e;
+    }
     if (!res.ok || !res.body) {
       const detail = await res.text().catch(() => "");
-      throw new Error(`Provider HTTP ${res.status}: ${detail.slice(0, 300)}`);
+      throw new Error(`Provider HTTP ${res.status}: ${friendlyHttpHint(res.status)}${detail.slice(0, 300)}`);
     }
 
     const reader = res.body.getReader();
@@ -61,4 +72,33 @@ export class OpenAICompatibleProvider implements LLMProvider {
     }
     return full;
   }
+
+  private async chatViaRequestUrl(
+    url: string,
+    body: { model: string; messages: ChatRequest["messages"] },
+    onDelta: (chunk: string) => void,
+  ): Promise<string> {
+    const res = await requestUrl({
+      url,
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${this.apiKey}`,
+      },
+      body: JSON.stringify(body),
+      throw: false,
+    });
+    if (res.status >= 400) {
+      throw new Error(`Provider HTTP ${res.status}: ${friendlyHttpHint(res.status)}${res.text.slice(0, 300)}`);
+    }
+    const full: string = res.json?.choices?.[0]?.message?.content ?? "";
+    if (full) onDelta(full);
+    return full;
+  }
+}
+
+function friendlyHttpHint(status: number): string {
+  if (status === 401) return "API key is missing or invalid — check it in ZettelkastenAI settings. ";
+  if (status === 429) return "Rate limit or quota exceeded — check billing/limits at your provider. ";
+  return "";
 }

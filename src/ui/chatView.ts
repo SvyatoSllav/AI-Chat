@@ -63,7 +63,7 @@ export class ChatView extends ItemView {
       }
       if (hits.length === 0 && this.plugin.index.ready) {
         // docs/large-vault.md §4: empty retrieval → honest answer, no blind LLM call
-        this.renderMsg("assistant", "Ничего не нашёл в vault по этому запросу — попробуй переформулировать.");
+        this.renderMsg("assistant", "Nothing in your vault matches this query — try rephrasing it.");
         return;
       }
       context = hits

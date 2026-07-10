@@ -40,3 +40,59 @@
   resize: none;
   min-height: 44px;
 }
+
+/* ---- agent tool steps ---- */
+.vm-step {
+  align-self: flex-start;
+  max-width: 95%;
+  font-size: 0.85em;
+  padding: 4px 10px;
+  border-left: 2px solid var(--background-modifier-border);
+  color: var(--text-muted);
+}
+.vm-step-done { border-left-color: var(--interactive-accent); }
+.vm-step-error { border-left-color: var(--text-error); color: var(--text-error); }
+.vm-step-rejected { border-left-color: var(--text-warning); color: var(--text-warning); }
+.vm-step-label { font-family: var(--font-monospace); }
+.vm-step details { margin-top: 4px; }
+.vm-step pre {
+  max-height: 200px;
+  overflow: auto;
+  font-size: 0.9em;
+  background: var(--background-secondary);
+  padding: 6px;
+  border-radius: 6px;
+}
+
+/* ---- approval card ---- */
+.vm-approve {
+  align-self: stretch;
+  border: 1px solid var(--interactive-accent);
+  border-radius: 8px;
+  padding: 10px;
+  background: var(--background-primary-alt);
+}
+.vm-approve-title { font-weight: 600; margin-bottom: 8px; }
+.vm-diff { display: flex; flex-direction: column; gap: 6px; }
+.vm-diff pre {
+  margin: 0;
+  max-height: 260px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 0.85em;
+  padding: 8px;
+  border-radius: 6px;
+}
+.vm-diff-before {
+  background: rgba(220, 80, 80, 0.10);
+  border-left: 3px solid var(--text-error);
+}
+.vm-diff-after {
+  background: rgba(80, 180, 100, 0.12);
+  border-left: 3px solid var(--interactive-accent);
+}
+.vm-approve-btns { display: flex; gap: 8px; margin-top: 10px; }
+.vm-approve-verdict { font-size: 0.85em; color: var(--text-muted); margin-top: 8px; display: inline-block; }
+.vm-approved { border-color: var(--interactive-accent); opacity: 0.85; }
+.vm-rejected { border-color: var(--text-warning); opacity: 0.7; }

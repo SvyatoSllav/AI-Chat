@@ -1,5 +1,6 @@
 import { Platform, requestUrl } from "obsidian";
-import { ChatRequest, LLMProvider } from "./types";
+import { ChatRequest, CompletionRequest, CompletionResult, LLMProvider } from "./types";
+import { completeWithTools } from "./openaiTools";
 
 /**
  * Any OpenAI-compatible endpoint: DeepSeek, OpenRouter, Ollama, Z.ai (GLM).
@@ -14,6 +15,11 @@ export class OpenAICompatibleProvider implements LLMProvider {
     private apiKey: string,
     private model: string,
   ) {}
+
+  async complete(req: CompletionRequest): Promise<CompletionResult> {
+    const url = this.baseUrl.replace(/\/+$/, "") + "/chat/completions";
+    return completeWithTools(url, { Authorization: `Bearer ${this.apiKey}` }, req.model ?? this.model, req);
+  }
 
   async chat(req: ChatRequest, onDelta: (chunk: string) => void): Promise<string> {
     const url = this.baseUrl.replace(/\/+$/, "") + "/chat/completions";

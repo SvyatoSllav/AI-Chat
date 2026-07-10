@@ -1,5 +1,6 @@
 import { Platform, requestUrl } from "obsidian";
-import { ChatRequest, LLMProvider } from "./types";
+import { ChatRequest, CompletionRequest, CompletionResult, LLMProvider } from "./types";
+import { completeWithTools } from "./openaiTools";
 
 export interface AccountInfo {
   email: string;
@@ -23,6 +24,18 @@ export class HostedProvider implements LLMProvider {
     private backendUrl: string,
     private token: string,
   ) {}
+
+  async complete(req: CompletionRequest): Promise<CompletionResult> {
+    if (!this.token) throw new Error("Sign in first: ZettelkastenAI settings → Account → Send code.");
+    const url = this.backendUrl.replace(/\/+$/, "") + "/api/chat";
+    return completeWithTools(
+      url,
+      { Authorization: `Bearer ${this.token}` },
+      req.model ?? "",
+      req,
+      { "X-ZK-Turn": req.firstOfTurn ? "new" : "continue" },
+    );
+  }
 
   async chat(req: ChatRequest, onDelta: (chunk: string) => void): Promise<string> {
     if (!this.token) {

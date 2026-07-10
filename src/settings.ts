@@ -16,6 +16,9 @@ export interface ZettelkastenAISettings {
   topK: number;
   vaultQA: boolean;
   debugMode: boolean;
+  agentMode: boolean;
+  autoApprove: boolean;
+  maxSteps: number;
 }
 
 // Default is the hosted subscription (GLM): sign in with email, 5 messages
@@ -32,6 +35,9 @@ export const DEFAULT_SETTINGS: ZettelkastenAISettings = {
   topK: 8,
   vaultQA: true,
   debugMode: false,
+  agentMode: true,
+  autoApprove: false,
+  maxSteps: 12,
 };
 
 export class ZettelkastenAISettingTab extends PluginSettingTab {
@@ -95,9 +101,46 @@ export class ZettelkastenAISettingTab extends PluginSettingTab {
         );
     }
 
+    containerEl.createEl("h3", { text: "Agent" });
+
+    new Setting(containerEl)
+      .setName("Agent mode")
+      .setDesc("Let the assistant use tools to read, create, edit and delete notes (needs the subscription or an OpenAI-compatible key). Off = plain Q&A over your vault.")
+      .addToggle((t) =>
+        t.setValue(s.agentMode).onChange(async (v) => {
+          s.agentMode = v;
+          await save();
+          this.display();
+        }),
+      );
+
+    if (s.agentMode) {
+      new Setting(containerEl)
+        .setName("Auto-approve file changes")
+        .setDesc("On: the agent creates/edits/deletes without asking (full autopilot). Off (recommended): every write shows a diff with Approve/Reject.")
+        .addToggle((t) =>
+          t.setValue(s.autoApprove).onChange(async (v) => {
+            s.autoApprove = v;
+            await save();
+          }),
+        );
+
+      new Setting(containerEl)
+        .setName("Max steps per turn")
+        .setDesc("Safety cap on tool calls the agent may chain before it must stop.")
+        .addSlider((sl) =>
+          sl.setLimits(4, 30, 1).setValue(s.maxSteps).setDynamicTooltip().onChange(async (v) => {
+            s.maxSteps = v;
+            await save();
+          }),
+        );
+    }
+
+    containerEl.createEl("h3", { text: "Retrieval" });
+
     new Setting(containerEl)
       .setName("Vault QA (RAG)")
-      .setDesc("Retrieve relevant notes and ground every answer in them, with [[wikilink]] citations.")
+      .setDesc("Plain mode only: retrieve relevant notes and ground answers in them with [[wikilink]] citations.")
       .addToggle((t) =>
         t.setValue(s.vaultQA).onChange(async (v) => {
           s.vaultQA = v;

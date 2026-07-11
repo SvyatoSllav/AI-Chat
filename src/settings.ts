@@ -14,6 +14,8 @@ export interface ZettelkastenAISettings {
   apiKey: string;
   model: string;
   claudeCodePath: string;
+  claudeCodeProxy: string;
+  chatTheme: "dark" | "light";
   topK: number;
   vaultQA: boolean;
   debugMode: boolean;
@@ -36,6 +38,8 @@ export const DEFAULT_SETTINGS: ZettelkastenAISettings = {
   apiKey: "",
   model: "deepseek-chat",
   claudeCodePath: "claude",
+  claudeCodeProxy: "",
+  chatTheme: "dark",
   topK: 8,
   vaultQA: true,
   debugMode: false,
@@ -103,7 +107,33 @@ export class ZettelkastenAISettingTab extends PluginSettingTab {
             await save();
           }),
         );
+      new Setting(containerEl)
+        .setName("HTTP(S) proxy")
+        .setDesc("Optional. Forwarded to the claude CLI as HTTPS_PROXY / HTTP_PROXY. Format: http://user:pass@host:port")
+        .addText((t) => {
+          t.inputEl.style.width = "260px";
+          t.setPlaceholder("http://user:pass@host:port")
+            .setValue(s.claudeCodeProxy)
+            .onChange(async (v) => {
+              s.claudeCodeProxy = v.trim();
+              await save();
+            });
+        });
     }
+
+    new Setting(containerEl)
+      .setName("Chat theme")
+      .setDesc("Black or white, independent of the Obsidian theme. Also toggleable from the chat header.")
+      .addDropdown((d) =>
+        d
+          .addOption("dark", "Black")
+          .addOption("light", "White")
+          .setValue(s.chatTheme)
+          .onChange(async (v) => {
+            s.chatTheme = v as "dark" | "light";
+            await save();
+          }),
+      );
 
     containerEl.createEl("h3", { text: "Agent" });
 

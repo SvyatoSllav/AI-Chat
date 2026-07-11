@@ -73,7 +73,7 @@ export class ClaudeCodeProvider implements LLMProvider {
   id = "claude-code";
   supportsMobile = false;
 
-  constructor(private binPath: string) {}
+  constructor(private binPath: string, private proxy = "") {}
 
   async chat(req: ChatRequest, onDelta: (chunk: string) => void): Promise<string> {
     return this.run(serializeMessages(req.messages), req.signal, onDelta);
@@ -96,7 +96,12 @@ export class ClaudeCodeProvider implements LLMProvider {
 
     const bin = await resolveBin(this.binPath);
     // Binary's dir on PATH so it can find its own helpers (node for npm installs).
-    const env = { ...process.env, PATH: `${dirname(bin)}:${process.env.PATH ?? ""}` };
+    const env: NodeJS.ProcessEnv = { ...process.env, PATH: `${dirname(bin)}:${process.env.PATH ?? ""}` };
+    if (this.proxy) {
+      env.HTTPS_PROXY = this.proxy;
+      env.HTTP_PROXY = this.proxy;
+      env.NO_PROXY = "localhost,127.0.0.1";
+    }
 
     return new Promise<string>((resolve, reject) => {
       const child = spawn(

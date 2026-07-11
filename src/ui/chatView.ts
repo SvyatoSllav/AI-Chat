@@ -5,6 +5,7 @@ import { runAgent, agentSystemPrompt, AgentStep } from "../agent/agent";
 import { ToolResult } from "../agent/tools";
 import { EFFORTS, EFFORT_ORDER, EffortId } from "../agent/effort";
 import { chooseModel, MODELS, ModelChoice } from "../agent/modelRouter";
+import { fetchAccount } from "../providers/hosted";
 
 const MODEL_OPTIONS: { value: ModelChoice; label: string }[] = [
   { value: "auto", label: "Auto" },
@@ -59,16 +60,25 @@ export class ChatView extends ItemView {
     const root = this.contentEl;
     root.empty();
     root.addClass("zettelkasten-ai");
+    this.applyTheme();
 
-    // ---- header ----
-    this.headerEl = root.createDiv({ cls: "zk-header" });
-    const title = this.headerEl.createDiv({ cls: "zk-header-title" });
-    title.createSpan({ cls: "zk-logo" });
-    title.createSpan({ text: "ZettelkastenAI" });
+    // ---- tab bar ----
+    this.headerEl = root.createDiv({ cls: "zk-tabbar" });
+    const tab = this.headerEl.createDiv({ cls: "zk-tab" });
+    tab.createSpan({ cls: "zk-tab-spark", text: "✦" });
+    tab.createSpan({ text: "New Chat" });
 
-    const actions = this.headerEl.createDiv({ cls: "zk-header-actions" });
-    this.buildModelSelector(actions);
-    this.buildEffortSelector(actions);
+    const actions = this.headerEl.createDiv({ cls: "zk-actions" });
+    const themeBtn = actions.createEl("button", { cls: "clickable-icon zk-icon-btn", attr: { "aria-label": "Black / white theme" } });
+    const paintThemeIcon = () => setIcon(themeBtn, this.plugin.settings.chatTheme === "dark" ? "sun" : "moon");
+    paintThemeIcon();
+    themeBtn.addEventListener("click", async () => {
+      const s = this.plugin.settings;
+      s.chatTheme = s.chatTheme === "dark" ? "light" : "dark";
+      await this.plugin.saveSettings();
+      this.applyTheme();
+      paintThemeIcon();
+    });
     const newChat = actions.createEl("button", { cls: "clickable-icon zk-icon-btn", attr: { "aria-label": "New chat" } });
     setIcon(newChat, "plus");
     newChat.addEventListener("click", () => this.resetConversation());
@@ -76,9 +86,9 @@ export class ChatView extends ItemView {
     // ---- messages ----
     this.msgsEl = root.createDiv({ cls: "vm-messages" });
 
-    // ---- input ----
-    const form = root.createDiv({ cls: "vm-input" });
-    this.inputEl = form.createEl("textarea", { attr: { rows: "1", placeholder: "Ask or tell the agent…  (Enter to send)" } });
+    // ---- input card: textarea on top, controls row below ----
+    const card = root.createDiv({ cls: "zk-inputcard" });
+    this.inputEl = card.createEl("textarea", { attr: { rows: "1", placeholder: "Type your prompt here…" } });
     this.inputEl.addEventListener("input", () => this.autosize());
     this.inputEl.addEventListener("keydown", (e) => {
       if (e.key === "Enter" && !e.shiftKey) {
@@ -86,18 +96,59 @@ export class ChatView extends ItemView {
         this.running ? this.stop() : void this.send();
       }
     });
-    this.sendBtn = form.createEl("button", { cls: "mod-cta zk-send" });
+    const bar = card.createDiv({ cls: "zk-toolbar" });
+    this.buildEffortSelector(bar);
+    this.buildModelSelector(bar);
+    bar.createDiv({ cls: "zk-toolbar-spacer" });
+    this.sendBtn = bar.createEl("button", { cls: "zk-send" });
     this.setSendState(false);
     this.sendBtn.addEventListener("click", () => (this.running ? this.stop() : void this.send()));
 
+    // ---- usage footer ----
+    void this.buildFooter(root);
+
     this.renderWelcome();
+  }
+
+  private applyTheme() {
+    const dark = this.plugin.settings.chatTheme === "dark";
+    this.contentEl.toggleClass("zk-dark", dark);
+    this.contentEl.toggleClass("zk-light", !dark);
+  }
+
+  private async buildFooter(root: HTMLElement) {
+    const s = this.plugin.settings;
+    const el = root.createDiv({ cls: "zk-footer" });
+    if (s.provider === "claude-code") {
+      el.createSpan({ text: "Claude Code CLI" });
+      if (s.claudeCodeProxy) el.createSpan({ cls: "zk-footer-right", text: "proxy on" });
+      return;
+    }
+    if (s.provider === "openai-compatible") {
+      el.createSpan({ text: s.model || "Custom endpoint" });
+      return;
+    }
+    el.createSpan({ text: "ZettelkastenAI" });
+    if (!s.authToken) return;
+    try {
+      const a = await fetchAccount(s.backendUrl, s.authToken);
+      el.empty();
+      if (a.pro) {
+        el.createSpan({ text: "Usage: Pro" });
+        el.createSpan({ cls: "zk-footer-right", text: `Renews ${new Date(a.proUntil!).toLocaleDateString()}` });
+      } else {
+        el.createSpan({ text: `Usage: ${a.used}/${a.freeQuota} free messages` });
+      }
+    } catch {
+      /* keep the plain label */
+    }
   }
 
   private modelSelect?: HTMLSelectElement;
 
   private buildModelSelector(parent: HTMLElement) {
     if (this.plugin.settings.provider !== "hosted") return; // GLM tiers are subscription-only
-    const sel = parent.createEl("select", { cls: "dropdown zk-model", attr: { "aria-label": "Model" } });
+    const sel = parent.createEl("select", { cls: "zk-select", attr: { "aria-label": "Model" } });
     for (const o of MODEL_OPTIONS) sel.createEl("option", { value: o.value, text: o.label });
     sel.value = this.plugin.settings.modelChoice;
     sel.title = "Model — Auto picks GLM-4.5-air for simple tasks and GLM-5.2 for hard ones";
@@ -109,7 +160,7 @@ export class ChatView extends ItemView {
   }
 
   private buildEffortSelector(parent: HTMLElement) {
-    const sel = parent.createEl("select", { cls: "dropdown zk-effort", attr: { "aria-label": "Effort" } });
+    const sel = parent.createEl("select", { cls: "zk-select", attr: { "aria-label": "Effort" } });
     for (const id of EFFORT_ORDER) {
       const o = sel.createEl("option", { value: id, text: EFFORTS[id].label });
       o.title = EFFORTS[id].hint;
@@ -287,6 +338,7 @@ export class ChatView extends ItemView {
 
   private renderThinking(): HTMLElement {
     const el = this.msgsEl.createDiv({ cls: "vm-msg vm-assistant zk-thinking" });
+    el.createSpan({ cls: "zk-thinking-label", text: "Thinking" });
     el.createSpan({ cls: "zk-dot" });
     el.createSpan({ cls: "zk-dot" });
     el.createSpan({ cls: "zk-dot" });
@@ -312,15 +364,23 @@ export class ChatView extends ItemView {
     return new Promise((resolve) => {
       const card = this.msgsEl.createDiv({ cls: "vm-approve" });
       const icon = TOOL_ICONS[name] ?? "🔧";
-      card.createDiv({ cls: "vm-approve-title", text: `${icon} ${preview?.title ?? name}` });
+      const head = card.createDiv({ cls: "vm-approve-head" });
+      head.createSpan({ cls: "vm-approve-title", text: `${icon} ${preview?.title ?? name}` });
+      const { added, removed } = diffStats(preview?.before, preview?.after);
+      if (added || removed) {
+        const stats = head.createSpan({ cls: "vm-diff-stats" });
+        stats.createSpan({ cls: "vm-diff-plus", text: `+${added}` });
+        stats.createSpan({ cls: "vm-diff-minus", text: `-${removed}` });
+      }
 
       if (preview?.after !== undefined || preview?.before !== undefined) {
-        const diff = card.createDiv({ cls: "vm-diff" });
+        const det = card.createEl("details", { cls: "vm-diff" });
+        det.createEl("summary", { text: "Open diff" });
         if (name === "edit_note" || name === "append_note") {
-          if (preview.before !== undefined) diff.createEl("pre", { cls: "vm-diff-before", text: trunc(preview.before) });
+          if (preview.before !== undefined) det.createEl("pre", { cls: "vm-diff-before", text: trunc(preview.before) });
         }
-        if (preview.after !== undefined) diff.createEl("pre", { cls: "vm-diff-after", text: trunc(preview.after) });
-        else if (name === "delete_note") diff.createEl("pre", { cls: "vm-diff-before", text: "This note will be moved to trash." });
+        if (preview.after !== undefined) det.createEl("pre", { cls: "vm-diff-after", text: trunc(preview.after) });
+        else if (name === "delete_note") det.createEl("pre", { cls: "vm-diff-before", text: "This note will be moved to trash." });
       }
 
       const btns = card.createDiv({ cls: "vm-approve-btns" });
@@ -429,4 +489,25 @@ export class ChatView extends ItemView {
 
 function trunc(s: string, n = 1400): string {
   return s.length > n ? s.slice(0, n) + `\n… (+${s.length - n} chars)` : s;
+}
+
+/** Rough line-level +/− counts for the approval card header. */
+function diffStats(before?: string, after?: string): { added: number; removed: number } {
+  const b = before?.split("\n") ?? [];
+  const a = after?.split("\n") ?? [];
+  const count = (lines: string[]) => {
+    const m = new Map<string, number>();
+    for (const l of lines) m.set(l, (m.get(l) ?? 0) + 1);
+    return m;
+  };
+  const bm = count(b);
+  let added = 0;
+  for (const l of a) {
+    const left = bm.get(l) ?? 0;
+    if (left > 0) bm.set(l, left - 1);
+    else added++;
+  }
+  let removed = 0;
+  for (const n of bm.values()) removed += n;
+  return { added, removed };
 }

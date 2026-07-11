@@ -7,7 +7,7 @@ import { HostedProvider } from "./hosted";
 export function createProvider(s: ZettelkastenAISettings): LLMProvider {
   switch (s.provider) {
     case "claude-code":
-      return new ClaudeCodeProvider(s.claudeCodePath);
+      return new ClaudeCodeProvider(s.claudeCodePath, s.claudeCodeProxy);
     case "openai-compatible":
       return new OpenAICompatibleProvider(s.baseUrl, s.apiKey, s.model);
     default:

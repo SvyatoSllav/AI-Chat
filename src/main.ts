@@ -45,12 +45,12 @@ export default class ZettelkastenAIPlugin extends Plugin {
       void this.buildIndex();
       this.registerEvent(
         this.app.vault.on("modify", (f) => {
-          if (f instanceof TFile && f.extension === "md") void this.index.updateFile(f);
+          if (f instanceof TFile && (f.extension === "md" || f.extension === "pdf")) void this.index.updateFile(f);
         }),
       );
       this.registerEvent(
         this.app.vault.on("create", (f) => {
-          if (f instanceof TFile && f.extension === "md") void this.index.updateFile(f);
+          if (f instanceof TFile && (f.extension === "md" || f.extension === "pdf")) void this.index.updateFile(f);
         }),
       );
       this.registerEvent(

@@ -1,6 +1,7 @@
 import { App, TFile, normalizePath } from "obsidian";
 import type { VaultIndex } from "../rag/indexer";
 import { ToolSpec } from "../providers/types";
+import { extractPdfText } from "../rag/pdf";
 
 // Which tools mutate the vault → gated behind approval unless auto-approve is on.
 export const WRITE_TOOLS = new Set(["create_note", "edit_note", "append_note", "delete_note"]);
@@ -33,8 +34,8 @@ export const TOOL_SPECS: ToolSpec[] = [
     type: "function",
     function: {
       name: "read_note",
-      description: "Read the full markdown content of a note by its path.",
-      parameters: { type: "object", properties: { path: { type: "string", description: "Note path, e.g. 'zettel/Deep Work.md'" } }, required: ["path"] },
+      description: "Read the full content of a note by its path. Works for markdown notes and PDF files (text is extracted from the PDF).",
+      parameters: { type: "object", properties: { path: { type: "string", description: "File path, e.g. 'zettel/Deep Work.md' or 'refs/Paper.pdf'" } }, required: ["path"] },
     },
   },
   {
@@ -149,6 +150,10 @@ export async function executeTool(
       case "read_note": {
         const f = app.vault.getAbstractFileByPath(path);
         if (!(f instanceof TFile)) return { output: `Error: note not found: ${path}` };
+        if (f.extension === "pdf") {
+          const text = await extractPdfText(await app.vault.readBinary(f)).catch(() => "");
+          return { output: text.trim() ? `PDF text of ${path}:\n\n${text}` : `Error: ${path} has no extractable text (likely a scanned/image PDF).` };
+        }
         return { output: await app.vault.read(f) };
       }
       case "get_active_note": {

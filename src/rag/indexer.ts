@@ -1,6 +1,7 @@
 import MiniSearch from "minisearch";
 import { App, TFile } from "obsidian";
 import { Chunk, chunkMarkdown } from "./chunker";
+import { extractPdfText } from "./pdf";
 
 export interface ScoredChunk extends Chunk {
   score: number;
@@ -35,7 +36,8 @@ export class VaultIndex {
     this.building = true;
     this.mini = this.newMini();
     this.chunksByPath.clear();
-    const files = this.app.vault.getMarkdownFiles();
+    // Markdown notes + PDFs (text extracted via pdf.js) become searchable.
+    const files = this.app.vault.getFiles().filter((f) => f.extension === "md" || f.extension === "pdf");
     for (let i = 0; i < files.length; i += BATCH) {
       await Promise.all(files.slice(i, i + BATCH).map((f) => this.indexFile(f)));
       onProgress?.(Math.min(i + BATCH, files.length), files.length);
@@ -48,7 +50,10 @@ export class VaultIndex {
   private async indexFile(file: TFile): Promise<void> {
     if (file.stat.size > MAX_FILE_SIZE) return;
     try {
-      const content = await this.app.vault.cachedRead(file);
+      const content = file.extension === "pdf"
+        ? await extractPdfText(await this.app.vault.readBinary(file)).catch(() => "")
+        : await this.app.vault.cachedRead(file);
+      if (!content.trim()) return; // image-only PDF / empty
       const chunks = chunkMarkdown(file.path, content);
       this.chunksByPath.set(file.path, chunks);
       this.mini.addAll(chunks);

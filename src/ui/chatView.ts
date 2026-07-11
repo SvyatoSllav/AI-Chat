@@ -62,7 +62,7 @@ export class ChatView extends ItemView {
     return "ZettelkastenAI";
   }
   getIcon() {
-    return "message-square";
+    return "zettelkasten-ai";
   }
 
   async onOpen() {
@@ -309,7 +309,7 @@ export class ChatView extends ItemView {
     if (this.msgsEl.childElementCount) return;
     const w = this.msgsEl.createDiv({ cls: "zk-welcome" });
     const badge = w.createDiv({ cls: "zk-welcome-badge" });
-    setIcon(badge, "sparkles");
+    setIcon(badge, "zettelkasten-ai");
     w.createDiv({ cls: "zk-welcome-title", text: "How can I help in your vault?" });
     w.createDiv({
       cls: "zk-welcome-sub",
@@ -720,7 +720,7 @@ export class ChatView extends ItemView {
   private roleHeader(parent: HTMLElement, role: "user" | "assistant") {
     const h = parent.createDiv({ cls: "zk-msghead" });
     const ic = h.createSpan({ cls: "zk-msghead-icon" });
-    setIcon(ic, role === "user" ? "user" : "sparkles");
+    setIcon(ic, role === "user" ? "user" : "zettelkasten-ai");
     h.createSpan({ cls: "zk-msghead-name", text: role === "user" ? "You" : "ZettelkastenAI" });
   }
 

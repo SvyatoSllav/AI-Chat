@@ -11,7 +11,9 @@
   line-height: 1.5;
 }
 
-/* Two self-contained themes, independent of Obsidian's. */
+/* Two self-contained themes, independent of Obsidian's.
+   Dark doubles as the fallback in case no theme class is applied. */
+.zettelkasten-ai,
 .zettelkasten-ai.zk-dark {
   --zkc-bg: #131313;
   --zkc-lowest: #0e0e0e;
@@ -49,6 +51,49 @@
   --zkc-assist-bg: rgba(0, 0, 0, 0.02);
   --zkc-green: #0f7b6c;
   --zkc-red: #b3261e;
+}
+
+/* Remap Obsidian's own variables inside the chat so Obsidian-styled children
+   (markdown-rendered text, code, links, icons, details) follow the CHAT theme.
+   Without this, chat-dark + Obsidian-light rendered dark text on dark panels
+   (and vice versa) — the "broken theme" failure mode. */
+.zettelkasten-ai.zk-dark {
+  color-scheme: dark;
+}
+.zettelkasten-ai.zk-light {
+  color-scheme: light;
+}
+.zettelkasten-ai.zk-dark,
+.zettelkasten-ai.zk-light {
+  --background-primary: var(--zkc-bg);
+  --background-primary-alt: var(--zkc-low);
+  --background-secondary: var(--zkc-lowest);
+  --background-secondary-alt: var(--zkc-low);
+  --background-modifier-border: var(--zkc-border);
+  --background-modifier-hover: var(--zkc-highest);
+  --background-modifier-form-field: transparent;
+  --text-normal: var(--zkc-text);
+  --text-muted: var(--zkc-muted);
+  --text-faint: var(--zkc-faint);
+  --text-accent: var(--zkc-primary);
+  --text-accent-hover: var(--zkc-primary);
+  --text-on-accent: var(--zkc-accent-fg);
+  --link-color: var(--zkc-primary);
+  --link-color-hover: var(--zkc-primary);
+  --link-external-color: var(--zkc-primary);
+  --link-external-color-hover: var(--zkc-primary);
+  --code-normal: var(--zkc-text);
+  --code-background: var(--zkc-lowest);
+  --hr-color: var(--zkc-border-soft);
+  --blockquote-border-color: var(--zkc-border);
+  --icon-color: var(--zkc-muted);
+  --icon-color-hover: var(--zkc-text);
+  --icon-color-focused: var(--zkc-text);
+  --interactive-accent: var(--zkc-accent-bg);
+  --interactive-accent-hover: var(--zkc-accent-bg);
+  --table-border-color: var(--zkc-border-soft);
+  --table-header-background: var(--zkc-low);
+  color: var(--zkc-text);
 }
 
 .zettelkasten-ai textarea,

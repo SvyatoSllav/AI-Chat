@@ -8,6 +8,59 @@ const DISALLOWED_CLI_TOOLS =
 
 const TOOL_CALL_RE = /```tool_call\s*([\s\S]*?)```/g;
 
+// GUI-launched Obsidian doesn't inherit the user's shell PATH (nvm, ~/.local/bin
+// etc. are set in shell rc files), so a bare "claude" often ENOENTs. Resolve the
+// real binary once: ask the login shell first, then scan common install dirs.
+let resolvedBin: string | null = null;
+
+async function resolveBin(binPath: string): Promise<string> {
+  const want = binPath || "claude";
+  if (want.includes("/") || want.includes("\\")) return want; // explicit path from settings
+  if (resolvedBin) return resolvedBin;
+
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const { execFile } = require("child_process") as typeof import("child_process");
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const fs = require("fs") as typeof import("fs");
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const os = require("os") as typeof import("os");
+
+  if (process.platform !== "win32") {
+    const shell = process.env.SHELL || "/bin/bash";
+    const fromShell = await new Promise<string>((res) =>
+      execFile(shell, ["-lc", `command -v ${want}`], { timeout: 5000 }, (e, stdout) =>
+        res(e ? "" : (stdout.trim().split("\n").pop() ?? "")),
+      ),
+    );
+    if (fromShell) return (resolvedBin = fromShell);
+  }
+
+  const home = os.homedir();
+  const candidates = [
+    `${home}/.local/bin/${want}`,
+    `${home}/.claude/local/${want}`,
+    `${home}/bin/${want}`,
+    `/usr/local/bin/${want}`,
+    `/opt/homebrew/bin/${want}`,
+    `${home}/.bun/bin/${want}`,
+    `${home}/.volta/bin/${want}`,
+    `${home}/.npm-global/bin/${want}`,
+  ];
+  try {
+    const nvm = `${home}/.nvm/versions/node`;
+    for (const v of fs.readdirSync(nvm)) candidates.push(`${nvm}/${v}/bin/${want}`);
+  } catch { /* no nvm */ }
+  for (const c of candidates) {
+    try {
+      fs.accessSync(c, fs.constants.X_OK);
+      return (resolvedBin = c);
+    } catch { /* keep looking */ }
+  }
+  throw new Error(
+    "Claude Code CLI not found. Install it (npm i -g @anthropic-ai/claude-code) or set the full path in settings (run `which claude` in a terminal).",
+  );
+}
+
 /**
  * Uses the official Claude Code CLI the user installed and authenticated
  * themselves (we never touch OAuth tokens). Desktop only.
@@ -32,18 +85,24 @@ export class ClaudeCodeProvider implements LLMProvider {
     return parseToolCalls(raw);
   }
 
-  private run(prompt: string, signal: AbortSignal | undefined, onDelta: (chunk: string) => void): Promise<string> {
+  private async run(prompt: string, signal: AbortSignal | undefined, onDelta: (chunk: string) => void): Promise<string> {
     if (!Platform.isDesktopApp) {
       throw new Error("Claude Code provider is desktop-only. Switch provider in settings.");
     }
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { spawn } = require("child_process") as typeof import("child_process");
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    const { dirname } = require("path") as typeof import("path");
+
+    const bin = await resolveBin(this.binPath);
+    // Binary's dir on PATH so it can find its own helpers (node for npm installs).
+    const env = { ...process.env, PATH: `${dirname(bin)}:${process.env.PATH ?? ""}` };
 
     return new Promise<string>((resolve, reject) => {
       const child = spawn(
-        this.binPath || "claude",
+        bin,
         ["-p", "--output-format", "stream-json", "--verbose", "--disallowedTools", DISALLOWED_CLI_TOOLS],
-        { stdio: ["pipe", "pipe", "pipe"] },
+        { stdio: ["pipe", "pipe", "pipe"], env },
       );
       let full = "";
       let buf = "";
@@ -83,7 +142,7 @@ export class ClaudeCodeProvider implements LLMProvider {
         else reject(new Error(`claude exited ${code}: ${err.slice(0, 400)}`));
       });
       child.on("error", (e: Error) =>
-        reject(new Error(`Cannot run Claude Code CLI (${e.message}). Is it installed and on PATH?`)),
+        reject(new Error(`Cannot run Claude Code CLI at ${bin} (${e.message}). Set the full path in settings — run \`which claude\` in a terminal.`)),
       );
     });
   }

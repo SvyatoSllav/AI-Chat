@@ -195,3 +195,11 @@
 }
 .zk-onboard-card ul { margin: 6px 0 10px; padding-left: 20px; }
 .zk-onboard-card li { color: var(--text-muted); font-size: 0.9em; margin: 2px 0; }
+
+/* Obsidian disables text selection outside the editor — re-enable it in chat
+   so answers can be copied. */
+.zettelkasten-ai .vm-messages,
+.zettelkasten-ai .vm-messages * {
+  user-select: text;
+  -webkit-user-select: text;
+}

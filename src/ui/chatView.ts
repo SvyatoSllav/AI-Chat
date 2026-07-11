@@ -15,23 +15,25 @@ const MODEL_OPTIONS: { value: ModelChoice; label: string }[] = [
 
 export const VIEW_TYPE_CHAT = "zettelkasten-ai-chat";
 
+// lucide icon per agent tool
 const TOOL_ICONS: Record<string, string> = {
-  search_vault: "🔎",
-  list_notes: "📁",
-  read_note: "📖",
-  get_active_note: "📄",
-  create_note: "✨",
-  edit_note: "✏️",
-  append_note: "➕",
-  delete_note: "🗑️",
+  search_vault: "search",
+  list_notes: "folder-open",
+  read_note: "book-open",
+  get_active_note: "file-text",
+  create_note: "file-plus",
+  edit_note: "pencil-line",
+  append_note: "list-plus",
+  delete_note: "trash-2",
 };
 
-const SUGGESTIONS = [
-  "Summarize my most-linked notes into a new MOC",
-  "What have I concluded about deep work?",
-  "Create a note from today's open note's key ideas",
-  "Find contradictions across my notes on habits",
-];
+interface PaletteCommand {
+  group: string;
+  icon: string;
+  title: string;
+  sub: string;
+  run: () => void;
+}
 
 export class ChatView extends ItemView {
   private history: ChatMessage[] = [];
@@ -41,6 +43,13 @@ export class ChatView extends ItemView {
   private sendBtn!: HTMLButtonElement;
   private abort?: AbortController;
   private running = false;
+  /** undefined = follow the active note; null = user dismissed the context chip. */
+  private contextPath: string | null | undefined = undefined;
+  private ctxRowEl?: HTMLElement;
+  private paletteEl?: HTMLElement;
+  private paletteVisible = false;
+  private paletteIndex = 0;
+  private paletteItems: { el: HTMLElement; run: () => void }[] = [];
 
   constructor(leaf: WorkspaceLeaf, private plugin: ZettelkastenAIPlugin) {
     super(leaf);
@@ -62,11 +71,9 @@ export class ChatView extends ItemView {
     root.addClass("zettelkasten-ai");
     this.applyTheme();
 
-    // ---- tab bar ----
+    // ---- top bar ----
     this.headerEl = root.createDiv({ cls: "zk-tabbar" });
-    const tab = this.headerEl.createDiv({ cls: "zk-tab" });
-    tab.createSpan({ cls: "zk-tab-spark", text: "✦" });
-    tab.createSpan({ text: "New Chat" });
+    this.headerEl.createDiv({ cls: "zk-title", text: "ZettelkastenAI" });
 
     const actions = this.headerEl.createDiv({ cls: "zk-actions" });
     const themeBtn = actions.createEl("button", { cls: "clickable-icon zk-icon-btn" });
@@ -83,8 +90,12 @@ export class ChatView extends ItemView {
       this.applyTheme();
       paintThemeIcon();
     });
-    // Follow Obsidian theme switches while in auto mode.
     this.registerEvent(this.app.workspace.on("css-change", () => this.applyTheme()));
+
+    const settingsBtn = actions.createEl("button", { cls: "clickable-icon zk-icon-btn", attr: { "aria-label": "Settings" } });
+    setIcon(settingsBtn, "settings");
+    settingsBtn.addEventListener("click", () => this.openSettings());
+
     const newChat = actions.createEl("button", { cls: "clickable-icon zk-icon-btn", attr: { "aria-label": "New chat" } });
     setIcon(newChat, "plus");
     newChat.addEventListener("click", () => this.resetConversation());
@@ -92,16 +103,39 @@ export class ChatView extends ItemView {
     // ---- messages ----
     this.msgsEl = root.createDiv({ cls: "vm-messages" });
 
-    // ---- input card: textarea on top, controls row below ----
-    const card = root.createDiv({ cls: "zk-inputcard" });
-    this.inputEl = card.createEl("textarea", { attr: { rows: "1", placeholder: "Type your prompt here…" } });
-    this.inputEl.addEventListener("input", () => this.autosize());
+    // ---- input area (context chip row + textarea + toolbar) ----
+    const inputWrap = root.createDiv({ cls: "zk-inputwrap" });
+    this.paletteEl = inputWrap.createDiv({ cls: "zk-palette" });
+    this.paletteEl.hide();
+
+    const card = inputWrap.createDiv({ cls: "zk-inputcard" });
+    this.ctxRowEl = card.createDiv({ cls: "zk-ctxrow" });
+    this.renderContextChip();
+    this.registerEvent(
+      this.app.workspace.on("active-leaf-change", () => {
+        this.contextPath = undefined; // a new note re-enters the context
+        this.renderContextChip();
+      }),
+    );
+
+    this.inputEl = card.createEl("textarea", { attr: { rows: "1", placeholder: "Ask your vault…  ( / for commands )" } });
+    this.inputEl.addEventListener("input", () => {
+      this.autosize();
+      this.updatePalette();
+    });
     this.inputEl.addEventListener("keydown", (e) => {
+      if (this.paletteVisible) {
+        if (e.key === "ArrowDown") { e.preventDefault(); this.movePalette(1); return; }
+        if (e.key === "ArrowUp") { e.preventDefault(); this.movePalette(-1); return; }
+        if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); this.paletteItems[this.paletteIndex]?.run(); return; }
+        if (e.key === "Escape") { this.hidePalette(); return; }
+      }
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         this.running ? this.stop() : void this.send();
       }
     });
+
     const bar = card.createDiv({ cls: "zk-toolbar" });
     this.buildEffortSelector(bar);
     this.buildModelSelector(bar);
@@ -110,7 +144,7 @@ export class ChatView extends ItemView {
     this.setSendState(false);
     this.sendBtn.addEventListener("click", () => (this.running ? this.stop() : void this.send()));
 
-    // ---- usage footer ----
+    // ---- footer ----
     void this.buildFooter(root);
 
     this.renderWelcome();
@@ -123,35 +157,69 @@ export class ChatView extends ItemView {
     this.contentEl.toggleClass("zk-light", !dark);
   }
 
+  private openSettings() {
+    const setting = (this.app as any).setting;
+    setting?.open?.();
+    setting?.openTabById?.(this.plugin.manifest.id);
+  }
+
   private async buildFooter(root: HTMLElement) {
     const s = this.plugin.settings;
     const el = root.createDiv({ cls: "zk-footer" });
+    const left = el.createSpan();
+    el.createSpan({ cls: "zk-footer-right", text: "↵ send · ⇧↵ new line" });
+
     if (s.provider === "claude-code") {
-      el.createSpan({ text: "Claude Code CLI" });
-      if (s.claudeCodeProxy) el.createSpan({ cls: "zk-footer-right", text: "proxy on" });
+      left.setText(`Claude Code CLI${s.claudeCodeProxy ? " · proxy on" : ""}`);
       return;
     }
     if (s.provider === "openai-compatible") {
-      el.createSpan({ text: s.model || "Custom endpoint" });
+      left.setText(s.model || "Custom endpoint");
       return;
     }
-    el.createSpan({ text: "ZettelkastenAI" });
+    left.setText("ZettelkastenAI");
     if (!s.authToken) return;
     try {
       const a = await fetchAccount(s.backendUrl, s.authToken);
-      el.empty();
-      if (a.pro) {
-        el.createSpan({ text: "Usage: Pro" });
-        el.createSpan({ cls: "zk-footer-right", text: `Renews ${new Date(a.proUntil!).toLocaleDateString()}` });
-      } else {
-        el.createSpan({ text: `Usage: ${a.used}/${a.freeQuota} free messages` });
-      }
+      left.setText(a.pro ? `Pro · renews ${new Date(a.proUntil!).toLocaleDateString()}` : `Usage: ${a.used}/${a.freeQuota} free`);
     } catch {
       /* keep the plain label */
     }
   }
 
+  // ---------- context chip ----------
+
+  private renderContextChip() {
+    const row = this.ctxRowEl;
+    if (!row) return;
+    row.empty();
+    const file = this.app.workspace.getActiveFile();
+    if (!file || this.contextPath === null) {
+      row.hide();
+      return;
+    }
+    row.show();
+    const ic = row.createSpan({ cls: "zk-ctx-icon" });
+    setIcon(ic, "file-text");
+    row.createSpan({ cls: "zk-ctx-name", text: file.basename });
+    const x = row.createEl("button", { cls: "zk-ctx-x", attr: { "aria-label": "Remove note from context" } });
+    setIcon(x, "x");
+    x.addEventListener("click", () => {
+      this.contextPath = null;
+      this.renderContextChip();
+    });
+  }
+
+  /** Active note path, unless the user dismissed the context chip. */
+  private activeContextPath(): string | undefined {
+    if (this.contextPath === null) return undefined;
+    return this.app.workspace.getActiveFile()?.path;
+  }
+
+  // ---------- toolbar selectors ----------
+
   private modelSelect?: HTMLSelectElement;
+  private effortSelect?: HTMLSelectElement;
 
   private buildModelSelector(parent: HTMLElement) {
     if (this.plugin.settings.provider !== "hosted") return; // GLM tiers are subscription-only
@@ -179,22 +247,92 @@ export class ChatView extends ItemView {
       sel.title = EFFORTS[sel.value as EffortId].hint;
       await this.plugin.saveSettings();
     });
+    this.effortSelect = sel;
+  }
+
+  private setModel(m: ModelChoice) {
+    this.plugin.settings.modelChoice = m;
+    void this.plugin.saveSettings();
+    if (this.modelSelect) this.modelSelect.value = m;
+  }
+
+  private setEffort(id: EffortId) {
+    this.plugin.settings.effort = id;
+    void this.plugin.saveSettings();
+    if (this.effortSelect) {
+      this.effortSelect.value = id;
+      this.effortSelect.title = EFFORTS[id].hint;
+    }
+  }
+
+  private modelLabel(m: ModelChoice): string {
+    return m === "auto" ? "Auto (air ⇄ 5.2)" : MODELS[m].label;
+  }
+
+  // ---------- welcome / quick actions ----------
+
+  private quickActions(): PaletteCommand[] {
+    const active = this.app.workspace.getActiveFile();
+    const acts: PaletteCommand[] = [];
+    if (active) {
+      acts.push({
+        group: "Quick actions",
+        icon: "align-left",
+        title: "Summarize active note",
+        sub: `"${active.basename}"`,
+        run: () => this.sendPreset(`Summarize [[${active.basename}]] into its key points.`),
+      });
+    }
+    acts.push({
+      group: "Quick actions",
+      icon: "git-fork",
+      title: "Find related concepts",
+      sub: active ? `Connections for "${active.basename}"` : "Explore semantic links in vault",
+      run: () =>
+        this.sendPreset(
+          active
+            ? `Find notes related to [[${active.basename}]] and explain how they connect.`
+            : "Find clusters of closely related notes in my vault and explain the connections.",
+        ),
+    });
+    acts.push({
+      group: "Quick actions",
+      icon: "lightbulb",
+      title: "Brainstorm next steps",
+      sub: "Generate ideas from current context",
+      run: () => this.sendPreset("Based on my current note and the notes related to it, brainstorm concrete next steps."),
+    });
+    return acts;
   }
 
   private renderWelcome() {
     if (this.msgsEl.childElementCount) return;
     const w = this.msgsEl.createDiv({ cls: "zk-welcome" });
-    w.createDiv({ cls: "zk-welcome-title", text: "What should we do in your vault?" });
-    w.createDiv({ cls: "zk-welcome-sub", text: "I can search, read, write and reorganize your notes. You approve every change." });
-    const chips = w.createDiv({ cls: "zk-suggestions" });
-    for (const s of SUGGESTIONS) {
-      const chip = chips.createEl("button", { cls: "zk-suggestion", text: s });
-      chip.addEventListener("click", () => {
-        this.inputEl.value = s;
-        this.autosize();
-        void this.send();
-      });
+    const badge = w.createDiv({ cls: "zk-welcome-badge" });
+    setIcon(badge, "sparkles");
+    w.createDiv({ cls: "zk-welcome-title", text: "How can I help in your vault?" });
+    w.createDiv({
+      cls: "zk-welcome-sub",
+      text: "I'm connected to your notes. Ask a question, or use a quick action on your current note.",
+    });
+    const grid = w.createDiv({ cls: "zk-qa" });
+    for (const a of this.quickActions()) {
+      const card = grid.createEl("button", { cls: "zk-qa-card" });
+      const ic = card.createSpan({ cls: "zk-qa-icon" });
+      setIcon(ic, a.icon);
+      const col = card.createDiv({ cls: "zk-qa-text" });
+      col.createDiv({ cls: "zk-qa-title", text: a.title });
+      col.createDiv({ cls: "zk-qa-sub", text: a.sub });
+      card.addEventListener("click", () => a.run());
     }
+  }
+
+  private sendPreset(text: string) {
+    if (this.running) return;
+    this.hidePalette();
+    this.inputEl.value = text;
+    this.autosize();
+    void this.send();
   }
 
   private resetConversation() {
@@ -222,10 +360,131 @@ export class ChatView extends ItemView {
     this.setSendState(false);
   }
 
+  // ---------- slash command palette ----------
+
+  private paletteCommands(): PaletteCommand[] {
+    const cmds: PaletteCommand[] = [...this.quickActions()];
+    if (this.plugin.settings.provider === "hosted") {
+      for (const o of MODEL_OPTIONS) {
+        cmds.push({
+          group: "Model",
+          icon: "cpu",
+          title: o.label,
+          sub: o.value === this.plugin.settings.modelChoice ? "Current model" : o.value === "auto" ? "air for simple, 5.2 for hard tasks" : "Pin this model",
+          run: () => this.setModel(o.value),
+        });
+      }
+    }
+    for (const id of EFFORT_ORDER) {
+      cmds.push({
+        group: "Effort",
+        icon: "gauge",
+        title: EFFORTS[id].label,
+        sub: EFFORTS[id].hint,
+        run: () => this.setEffort(id),
+      });
+    }
+    cmds.push({
+      group: "System",
+      icon: "refresh-cw",
+      title: "Re-index vault",
+      sub: "Rebuild the local search index",
+      run: () => void this.plugin.buildIndex(),
+    });
+    cmds.push({
+      group: "System",
+      icon: "plus",
+      title: "New chat",
+      sub: "Clear the conversation",
+      run: () => this.resetConversation(),
+    });
+    cmds.push({
+      group: "System",
+      icon: "settings",
+      title: "Open settings",
+      sub: "Provider, theme, agent options",
+      run: () => this.openSettings(),
+    });
+    return cmds;
+  }
+
+  private updatePalette() {
+    const v = this.inputEl.value;
+    if (!v.startsWith("/")) {
+      this.hidePalette();
+      return;
+    }
+    const q = v.slice(1).toLowerCase().trim();
+    const matches = this.paletteCommands().filter(
+      (c) => !q || c.title.toLowerCase().includes(q) || c.sub.toLowerCase().includes(q) || c.group.toLowerCase().includes(q),
+    );
+    const pal = this.paletteEl!;
+    pal.empty();
+    this.paletteItems = [];
+    this.paletteIndex = 0;
+
+    if (!matches.length) {
+      pal.createDiv({ cls: "zk-palette-empty", text: "No matching commands" });
+    } else {
+      const list = pal.createDiv({ cls: "zk-palette-list" });
+      let lastGroup = "";
+      for (const c of matches) {
+        if (c.group !== lastGroup) {
+          list.createDiv({ cls: "zk-palette-group", text: c.group });
+          lastGroup = c.group;
+        }
+        const item = list.createDiv({ cls: "zk-palette-item" });
+        const ic = item.createSpan({ cls: "zk-palette-icon" });
+        setIcon(ic, c.icon);
+        const col = item.createDiv({ cls: "zk-palette-text" });
+        col.createDiv({ cls: "zk-palette-title", text: c.title });
+        col.createDiv({ cls: "zk-palette-sub", text: c.sub });
+        const run = () => {
+          this.hidePalette();
+          this.inputEl.value = "";
+          this.autosize();
+          c.run();
+        };
+        item.addEventListener("mousedown", (e) => {
+          e.preventDefault(); // keep textarea focus
+          run();
+        });
+        const idx = this.paletteItems.length;
+        item.addEventListener("mouseenter", () => this.highlightPalette(idx));
+        this.paletteItems.push({ el: item, run });
+      }
+    }
+    this.highlightPalette(0);
+    pal.show();
+    this.paletteVisible = true;
+  }
+
+  private highlightPalette(i: number) {
+    this.paletteItems.forEach((it, n) => it.el.toggleClass("is-active", n === i));
+    this.paletteIndex = i;
+  }
+
+  private movePalette(delta: number) {
+    if (!this.paletteItems.length) return;
+    const next = (this.paletteIndex + delta + this.paletteItems.length) % this.paletteItems.length;
+    this.highlightPalette(next);
+    this.paletteItems[next].el.scrollIntoView({ block: "nearest" });
+  }
+
+  private hidePalette() {
+    this.paletteEl?.hide();
+    this.paletteVisible = false;
+    this.paletteItems = [];
+  }
+
+  // ---------- send ----------
+
   private async send() {
     const q = this.inputEl.value.trim();
     if (!q || this.running) return;
+    this.hidePalette();
     if (q.startsWith("/")) {
+      // fallback for typed commands with the palette dismissed
       this.inputEl.value = "";
       this.autosize();
       this.handleCommand(q);
@@ -255,42 +514,36 @@ export class ChatView extends ItemView {
       const map: Record<string, ModelChoice> = { auto: "auto", fast: "fast", air: "fast", "glm-4.5-air": "fast", smart: "smart", "5.2": "smart", "glm-5.2": "smart" };
       if (arg && map[arg]) {
         this.setModel(map[arg]);
+        this.renderMsg("assistant", `Model set to ${this.modelLabel(map[arg])}.`);
         return;
       }
-      // no/unknown arg → show a picker
       const wrap = this.msgsEl.createDiv({ cls: "vm-msg vm-assistant zk-cmd" });
       wrap.createDiv({ text: `Model — current: ${this.modelLabel(this.plugin.settings.modelChoice)}. Pick one:` });
       const row = wrap.createDiv({ cls: "zk-cmd-btns" });
       for (const o of MODEL_OPTIONS) {
         const b = row.createEl("button", { text: o.label, cls: o.value === this.plugin.settings.modelChoice ? "mod-cta" : "" });
-        b.addEventListener("click", () => this.setModel(o.value));
+        b.addEventListener("click", () => {
+          this.setModel(o.value);
+          this.renderMsg("assistant", `Model set to ${this.modelLabel(o.value)}.`);
+        });
       }
       this.scroll();
       return;
     }
     if (name === "help") {
-      this.renderMsg("assistant", "Commands:\n/model [auto|air|5.2] — choose the model (Auto = GLM-4.5-air for simple tasks, GLM-5.2 for hard ones).");
+      this.renderMsg("assistant", "Type / in the input to open the command menu: quick actions, model, effort, re-index, settings.");
       return;
     }
-    this.renderMsg("assistant", `Unknown command /${name}. Try /model or /help.`);
+    this.renderMsg("assistant", `Unknown command /${name}. Type / to see available commands.`);
   }
 
-  private setModel(m: ModelChoice) {
-    this.plugin.settings.modelChoice = m;
-    void this.plugin.saveSettings();
-    if (this.modelSelect) this.modelSelect.value = m;
-    this.renderMsg("assistant", `Model set to ${this.modelLabel(m)}.`);
-  }
-
-  private modelLabel(m: ModelChoice): string {
-    return m === "auto" ? "Auto (air ⇄ 5.2)" : MODELS[m].label;
-  }
+  // ---------- agent flow ----------
 
   private async sendAgent(q: string) {
     const s = this.plugin.settings;
     const effort = EFFORTS[s.effort];
     const provider = this.plugin.getProvider();
-    const activePath = this.app.workspace.getActiveFile()?.path;
+    const activePath = this.activeContextPath();
     const routed = chooseModel(q, s.effort, s.modelChoice);
     // GLM routing only applies to the hosted subscription; Claude Code and BYOK
     // use whatever model the CLI/endpoint is configured with.
@@ -302,8 +555,8 @@ export class ChatView extends ItemView {
       { role: "user", content: q },
     ];
 
-    const thinking = this.renderThinking();
-    let finalEl: HTMLElement | null = null;
+    const thinking = this.renderThinkingRow();
+    let finalBlock: HTMLElement | null = null;
     try {
       const finalText = await runAgent(
         provider,
@@ -315,8 +568,9 @@ export class ChatView extends ItemView {
           onText: (text) => {
             if (!text.trim()) return;
             thinking.hide();
-            finalEl = this.msgsEl.createDiv({ cls: "vm-msg vm-assistant" });
-            void this.renderMarkdown(text, finalEl);
+            const { block, body } = this.renderAssistantBlock(false);
+            finalBlock = block;
+            void this.renderMarkdown(text, body);
             this.scroll();
           },
           onStep: (step) => {
@@ -327,7 +581,7 @@ export class ChatView extends ItemView {
         },
       );
       thinking.remove();
-      if (finalEl) this.addCopyButton(finalEl, finalText);
+      if (finalBlock) this.addCopyButton(finalBlock, finalText);
       this.history.push({ role: "user", content: q }, { role: "assistant", content: finalText });
     } catch (e) {
       thinking.remove();
@@ -338,13 +592,14 @@ export class ChatView extends ItemView {
 
   private renderModelBadge(tier: "fast" | "smart", reason: string) {
     const el = this.msgsEl.createDiv({ cls: "vm-step zk-model-badge" });
-    const icon = tier === "smart" ? "🧠" : "⚡";
-    el.createSpan({ cls: "vm-step-label", text: `${icon} ${MODELS[tier].label} · ${reason}` });
+    const ic = el.createSpan({ cls: "vm-step-icon" });
+    setIcon(ic, tier === "smart" ? "brain" : "zap");
+    el.createSpan({ cls: "vm-step-label", text: `${MODELS[tier].label} · ${reason}` });
     this.scroll();
   }
 
-  private renderThinking(): HTMLElement {
-    const el = this.msgsEl.createDiv({ cls: "vm-msg vm-assistant zk-thinking" });
+  private renderThinkingRow(): HTMLElement {
+    const el = this.msgsEl.createDiv({ cls: "zk-thinking" });
     el.createSpan({ cls: "zk-thinking-label", text: "Thinking" });
     el.createSpan({ cls: "zk-dot" });
     el.createSpan({ cls: "zk-dot" });
@@ -355,10 +610,11 @@ export class ChatView extends ItemView {
 
   private renderStep(step: AgentStep) {
     const el = this.msgsEl.createDiv({ cls: `vm-step vm-step-${step.status}` });
-    const icon = TOOL_ICONS[step.name] ?? "🔧";
+    const ic = el.createSpan({ cls: "vm-step-icon" });
+    setIcon(ic, TOOL_ICONS[step.name] ?? "wrench");
     const target = step.args?.path ?? step.args?.query ?? step.args?.folder ?? "";
     const verb = step.status === "rejected" ? "rejected" : step.status === "error" ? "failed" : step.name.replace(/_/g, " ");
-    el.createSpan({ cls: "vm-step-label", text: `${icon} ${verb}${target ? " — " + target : ""}` });
+    el.createSpan({ cls: "vm-step-label", text: `${verb}${target ? " — " + target : ""}` });
     if (step.status === "done" && step.output && step.name.startsWith("search")) {
       const det = el.createEl("details");
       det.createEl("summary", { text: "result" });
@@ -370,9 +626,10 @@ export class ChatView extends ItemView {
   private askApproval(name: string, args: any, preview: ToolResult["preview"] | null): Promise<boolean> {
     return new Promise((resolve) => {
       const card = this.msgsEl.createDiv({ cls: "vm-approve" });
-      const icon = TOOL_ICONS[name] ?? "🔧";
       const head = card.createDiv({ cls: "vm-approve-head" });
-      head.createSpan({ cls: "vm-approve-title", text: `${icon} ${preview?.title ?? name}` });
+      const ic = head.createSpan({ cls: "vm-approve-icon" });
+      setIcon(ic, TOOL_ICONS[name] ?? "wrench");
+      head.createSpan({ cls: "vm-approve-title", text: preview?.title ?? name });
       const { added, removed } = diffStats(preview?.before, preview?.after);
       if (added || removed) {
         const stats = head.createSpan({ cls: "vm-diff-stats" });
@@ -382,7 +639,8 @@ export class ChatView extends ItemView {
 
       if (preview?.after !== undefined || preview?.before !== undefined) {
         const det = card.createEl("details", { cls: "vm-diff" });
-        det.createEl("summary", { text: "Open diff" });
+        det.open = true;
+        det.createEl("summary", { text: "Diff" });
         if (name === "edit_note" || name === "append_note") {
           if (preview.before !== undefined) det.createEl("pre", { cls: "vm-diff-before", text: trunc(preview.before) });
         }
@@ -397,21 +655,23 @@ export class ChatView extends ItemView {
         card.createSpan({ cls: "vm-approve-verdict", text: ok ? "✓ approved" : "✕ rejected" });
         resolve(ok);
       };
-      btns.createEl("button", { cls: "mod-cta", text: "Approve" }).addEventListener("click", () => done(true));
       btns.createEl("button", { text: "Reject" }).addEventListener("click", () => done(false));
+      btns.createEl("button", { cls: "mod-cta", text: "Approve" }).addEventListener("click", () => done(true));
       this.scroll();
     });
   }
+
+  // ---------- plain (RAG) flow ----------
 
   private async sendPlain(q: string) {
     const s = this.plugin.settings;
     let context = "";
     let sources: string[] = [];
     if (s.vaultQA) {
-      const active = this.app.workspace.getActiveFile()?.path;
+      const active = this.activeContextPath();
       const hits = this.plugin.index.search(q, EFFORTS[s.effort].topK, active);
       if (s.debugMode && hits.length) {
-        this.renderMsg("assistant", "🔎 Debug — retrieved:\n" + hits.map((h, i) => `${i + 1}. ${h.title} (${h.score.toFixed(2)})`).join("\n"));
+        this.renderMsg("assistant", "Debug — retrieved:\n" + hits.map((h, i) => `${i + 1}. ${h.title} (${h.score.toFixed(2)})`).join("\n"));
       }
       if (hits.length === 0 && this.plugin.index.ready) {
         this.renderMsg("assistant", "Nothing in your vault matches this query — try rephrasing it.");
@@ -437,24 +697,54 @@ export class ChatView extends ItemView {
       { role: "user", content: q },
     ];
 
-    const el = this.renderThinking();
+    const { block, body } = this.renderAssistantBlock(true);
     try {
       let acc = "";
       const full = await this.plugin.getProvider().chat({ messages, signal: this.abort!.signal }, (delta) => {
         acc += delta;
-        el.removeClass("zk-thinking");
-        el.setText(acc);
+        body.setText(acc); // replaces the thinking indicator
         this.scroll();
       });
       const md = full + (sources.length ? `\n\n---\nSources: ${sources.map((t) => `[[${t}]]`).join(" · ")}` : "");
-      el.removeClass("zk-thinking");
-      await this.renderMarkdown(md, el);
-      this.addCopyButton(el, full);
+      await this.renderMarkdown(md, body);
+      this.addCopyButton(block, full);
       this.history.push({ role: "user", content: q }, { role: "assistant", content: full });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      el.setText(/abort/i.test(msg) ? "⏹ stopped" : `⚠️ ${msg}`);
+      body.setText(/abort/i.test(msg) ? "⏹ stopped" : `⚠️ ${msg}`);
     }
+  }
+
+  // ---------- message rendering ----------
+
+  private roleHeader(parent: HTMLElement, role: "user" | "assistant") {
+    const h = parent.createDiv({ cls: "zk-msghead" });
+    const ic = h.createSpan({ cls: "zk-msghead-icon" });
+    setIcon(ic, role === "user" ? "user" : "sparkles");
+    h.createSpan({ cls: "zk-msghead-name", text: role === "user" ? "You" : "ZettelkastenAI" });
+  }
+
+  private renderAssistantBlock(thinking: boolean): { block: HTMLElement; body: HTMLElement } {
+    const block = this.msgsEl.createDiv({ cls: "vm-msg vm-assistant" });
+    this.roleHeader(block, "assistant");
+    const body = block.createDiv({ cls: "vm-msg-body" });
+    if (thinking) {
+      const t = body.createDiv({ cls: "zk-thinking" });
+      t.createSpan({ cls: "zk-thinking-label", text: "Thinking" });
+      t.createSpan({ cls: "zk-dot" });
+      t.createSpan({ cls: "zk-dot" });
+      t.createSpan({ cls: "zk-dot" });
+    }
+    this.scroll();
+    return { block, body };
+  }
+
+  private renderMsg(role: "user" | "assistant", text: string): HTMLElement {
+    const wrap = this.msgsEl.createDiv({ cls: `vm-msg vm-${role}` });
+    this.roleHeader(wrap, role);
+    wrap.createDiv({ cls: "vm-msg-body", text });
+    this.scroll();
+    return wrap;
   }
 
   private addCopyButton(el: HTMLElement, text: string) {
@@ -476,13 +766,6 @@ export class ChatView extends ItemView {
         void this.app.workspace.openLinkText(target, "", false);
       });
     });
-  }
-
-  private renderMsg(role: "user" | "assistant", text: string): HTMLElement {
-    const wrap = this.msgsEl.createDiv({ cls: `vm-msg vm-${role}` });
-    wrap.setText(text);
-    this.scroll();
-    return wrap;
   }
 
   private scroll() {

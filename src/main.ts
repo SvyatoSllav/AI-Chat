@@ -50,7 +50,7 @@ export default class ZettelkastenAIPlugin extends Plugin {
     });
   }
 
-  private async buildIndex() {
+  async buildIndex() {
     const t0 = Date.now();
     await this.index.build((done, total) => this.statusEl.setText(`ZettelkastenAI: indexing ${done}/${total}`));
     this.statusEl.setText(`ZettelkastenAI: indexed in ${((Date.now() - t0) / 1000).toFixed(1)}s`);

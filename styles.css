@@ -1,4 +1,4 @@
-/* ============ ZettelkastenAI chat — flat panel look, own black/white themes ============ */
+/* ============ ZettelkastenAI chat — dense Material-dark sidebar ============ */
 
 .zettelkasten-ai {
   display: flex;
@@ -7,32 +7,54 @@
   padding: 0;
   background: var(--zkc-bg);
   color: var(--zkc-text);
+  font-size: 13px;
+  line-height: 1.5;
 }
 
 /* Two self-contained themes, independent of Obsidian's. */
 .zettelkasten-ai.zk-dark {
-  --zkc-bg: #1b1b1b;
-  --zkc-panel: #242424;
-  --zkc-panel2: #2d2d2d;
-  --zkc-border: #383838;
-  --zkc-text: #ececec;
-  --zkc-muted: #9a9a9a;
-  --zkc-cta: #ffffff;
-  --zkc-cta-text: #111111;
-  --zkc-green: #4cc38a;
-  --zkc-red: #e5484d;
+  --zkc-bg: #131313;
+  --zkc-lowest: #0e0e0e;
+  --zkc-low: #1b1b1c;
+  --zkc-panel: #202020;
+  --zkc-high: #2a2a2a;
+  --zkc-highest: #353535;
+  --zkc-border: #4a4455;
+  --zkc-border-soft: rgba(74, 68, 85, 0.45);
+  --zkc-text: #e5e2e1;
+  --zkc-muted: #b7aec2;
+  --zkc-faint: #958da1;
+  --zkc-primary: #d2bbff;
+  --zkc-accent-bg: #7c3aed;
+  --zkc-accent-fg: #ede0ff;
+  --zkc-assist-bg: rgba(255, 255, 255, 0.015);
+  --zkc-green: #3cddc7;
+  --zkc-red: #ffb4ab;
 }
 .zettelkasten-ai.zk-light {
   --zkc-bg: #ffffff;
-  --zkc-panel: #f4f4f4;
-  --zkc-panel2: #ebebeb;
-  --zkc-border: #e0e0e0;
-  --zkc-text: #191919;
-  --zkc-muted: #757575;
-  --zkc-cta: #111111;
-  --zkc-cta-text: #ffffff;
-  --zkc-green: #18794e;
-  --zkc-red: #cd2b31;
+  --zkc-lowest: #f7f6f9;
+  --zkc-low: #f1eff4;
+  --zkc-panel: #eae7ef;
+  --zkc-high: #e2dee9;
+  --zkc-highest: #d8d3e0;
+  --zkc-border: #cac4d0;
+  --zkc-border-soft: rgba(202, 196, 208, 0.55);
+  --zkc-text: #1c1b1f;
+  --zkc-muted: #49454f;
+  --zkc-faint: #79747e;
+  --zkc-primary: #6b2fd0;
+  --zkc-accent-bg: #7c3aed;
+  --zkc-accent-fg: #ffffff;
+  --zkc-assist-bg: rgba(0, 0, 0, 0.02);
+  --zkc-green: #0f7b6c;
+  --zkc-red: #b3261e;
+}
+
+.zettelkasten-ai textarea,
+.zettelkasten-ai select,
+.zettelkasten-ai button {
+  font-family: inherit;
 }
 
 /* Obsidian disables text selection outside the editor — re-enable in chat. */
@@ -42,29 +64,36 @@
   -webkit-user-select: text;
 }
 
-/* ---- tab bar ---- */
+/* thin scrollbar for the dense layout */
+.zettelkasten-ai ::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+.zettelkasten-ai ::-webkit-scrollbar-track {
+  background: transparent;
+}
+.zettelkasten-ai ::-webkit-scrollbar-thumb {
+  background: var(--zkc-highest);
+  border-radius: 2px;
+}
+.zettelkasten-ai ::-webkit-scrollbar-thumb:hover {
+  background: var(--zkc-border);
+}
+
+/* ---- top bar ---- */
 .zk-tabbar {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 10px;
-  border-bottom: 1px solid var(--zkc-border);
+  height: 40px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--zkc-border-soft);
   flex: 0 0 auto;
 }
-.zk-tab {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 0.82em;
+.zk-title {
+  font-size: 11px;
   font-weight: 600;
-  padding: 4px 10px;
-  border-radius: 7px;
-  background: var(--zkc-panel);
-  border: 1px solid var(--zkc-border);
-}
-.zk-tab-spark {
-  color: var(--zkc-muted);
-  font-size: 0.9em;
+  letter-spacing: 0.05em;
+  color: var(--zkc-text);
 }
 .zk-actions {
   margin-left: auto;
@@ -73,100 +102,220 @@
   gap: 2px;
 }
 .zettelkasten-ai .zk-icon-btn {
+  width: 26px;
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   color: var(--zkc-muted);
   background: transparent;
   box-shadow: none;
-  padding: 4px;
+  border-radius: 4px;
+  padding: 0;
 }
 .zettelkasten-ai .zk-icon-btn:hover {
   color: var(--zkc-text);
-  background: var(--zkc-panel2);
+  background: var(--zkc-highest);
+}
+.zettelkasten-ai .zk-icon-btn svg {
+  width: 16px;
+  height: 16px;
 }
 
-/* ---- messages ---- */
+/* ---- messages canvas ---- */
 .vm-messages {
   flex: 1 1 auto;
   overflow-y: auto;
-  padding: 12px 14px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
 }
 .vm-msg {
-  font-size: 0.88em;
-  line-height: 1.55;
-  word-break: break-word;
-  white-space: pre-wrap;
+  padding: 12px;
+  border-bottom: 1px solid var(--zkc-border-soft);
+  font-size: 13px;
+  position: relative;
 }
-/* user prompt = subtle card; assistant = flat text on the panel */
-.vm-user {
-  background: var(--zkc-panel);
-  border: 1px solid var(--zkc-border);
-  border-radius: 10px;
-  padding: 8px 12px;
+.vm-user .vm-msg-body {
+  white-space: pre-wrap;
+  word-break: break-word;
 }
 .vm-assistant {
-  position: relative;
-  padding: 0 2px;
-  white-space: normal;
+  background: var(--zkc-assist-bg);
 }
-.vm-assistant .markdown-rendered {
-  font-size: 1em;
+.zk-msghead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.zk-msghead-icon {
+  display: flex;
+  color: var(--zkc-muted);
+}
+.zk-msghead-icon svg {
+  width: 14px;
+  height: 14px;
+}
+.zk-msghead-name {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--zkc-muted);
+}
+.vm-assistant .zk-msghead-icon,
+.vm-assistant .zk-msghead-name {
+  color: var(--zkc-primary);
+}
+.vm-msg-body {
   color: var(--zkc-text);
+  word-break: break-word;
 }
-.vm-assistant .markdown-rendered p,
-.vm-assistant .markdown-rendered ul {
+.vm-msg-body.markdown-rendered,
+.vm-msg-body .markdown-rendered {
+  font-size: 13px;
+}
+.vm-msg-body p,
+.vm-msg-body ul,
+.vm-msg-body ol {
   margin: 6px 0;
 }
+.vm-msg-body pre {
+  background: var(--zkc-lowest);
+  border: 1px solid var(--zkc-border-soft);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+/* wikilink citations as chips */
+.vm-assistant .vm-msg-body a.internal-link {
+  font-family: var(--font-monospace);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--zkc-primary);
+  background: color-mix(in srgb, var(--zkc-primary) 10%, transparent);
+  border: 1px solid color-mix(in srgb, var(--zkc-primary) 22%, transparent);
+  border-radius: 2px;
+  padding: 1px 6px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.vm-assistant .vm-msg-body a.internal-link:hover {
+  background: color-mix(in srgb, var(--zkc-primary) 20%, transparent);
+}
+
 .zk-copy {
   position: absolute;
-  top: 0;
-  right: 0;
+  top: 10px;
+  right: 10px;
   opacity: 0;
   color: var(--zkc-muted);
   background: transparent;
   box-shadow: none;
   padding: 3px;
+  border-radius: 4px;
+}
+.zk-copy svg {
+  width: 14px;
+  height: 14px;
 }
 .vm-assistant:hover .zk-copy {
   opacity: 1;
 }
 
-/* ---- welcome ---- */
+/* ---- welcome / quick actions ---- */
 .zk-welcome {
-  margin: auto 0;
-  text-align: center;
-  padding: 18px 8px;
-}
-.zk-welcome-title {
-  font-weight: 600;
-  margin-bottom: 4px;
-}
-.zk-welcome-sub {
-  color: var(--zkc-muted);
-  font-size: 0.82em;
-  margin-bottom: 14px;
-}
-.zk-suggestions {
+  margin: 24px 0 0;
+  padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  align-items: stretch;
+  align-items: center;
+  text-align: center;
 }
-.zk-suggestion {
-  background: var(--zkc-panel);
-  border: 1px solid var(--zkc-border);
+.zk-welcome-badge {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: var(--zkc-high);
+  border: 1px solid var(--zkc-border-soft);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--zkc-primary);
+  margin-bottom: 14px;
+}
+.zk-welcome-badge svg {
+  width: 22px;
+  height: 22px;
+}
+.zk-welcome-title {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.zk-welcome-sub {
+  font-size: 12px;
   color: var(--zkc-muted);
-  border-radius: 8px;
-  padding: 7px 10px;
-  font-size: 0.8em;
+  max-width: 280px;
+  margin-bottom: 18px;
+}
+.zk-qa {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
   text-align: left;
+}
+.zk-qa-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  background: var(--zkc-lowest);
+  border: 1px solid var(--zkc-border-soft);
+  border-radius: 4px;
   cursor: pointer;
   box-shadow: none;
+  position: relative;
+  overflow: hidden;
+  text-align: left;
+  height: auto;
 }
-.zk-suggestion:hover {
+.zk-qa-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--zkc-primary);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.zk-qa-card:hover {
+  background: var(--zkc-high);
+}
+.zk-qa-card:hover::before {
+  opacity: 1;
+}
+.zk-qa-icon {
+  display: flex;
+  color: var(--zkc-muted);
+  flex: 0 0 auto;
+}
+.zk-qa-card:hover .zk-qa-icon {
+  color: var(--zkc-primary);
+}
+.zk-qa-icon svg {
+  width: 18px;
+  height: 18px;
+}
+.zk-qa-title {
+  font-size: 12px;
+  font-weight: 500;
   color: var(--zkc-text);
-  border-color: var(--zkc-muted);
+}
+.zk-qa-sub {
+  font-size: 10px;
+  color: var(--zkc-faint);
 }
 
 /* ---- thinking ---- */
@@ -175,16 +324,20 @@
   align-items: center;
   gap: 4px;
   color: var(--zkc-muted);
+  padding: 8px 12px;
+}
+.vm-msg-body .zk-thinking {
+  padding: 0;
 }
 .zk-thinking-label {
-  font-size: 0.82em;
+  font-size: 11px;
   margin-right: 2px;
 }
 .zk-dot {
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: var(--zkc-muted);
+  background: var(--zkc-primary);
   animation: zk-pulse 1.2s infinite ease-in-out;
 }
 .zk-dot:nth-child(3) { animation-delay: 0.2s; }
@@ -196,43 +349,78 @@
 
 /* ---- agent steps / model badge ---- */
 .vm-step {
-  font-size: 0.78em;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px 12px;
+  font-size: 11px;
   color: var(--zkc-muted);
-  padding: 2px 0;
+}
+.vm-step-icon {
+  display: flex;
+  color: var(--zkc-faint);
+}
+.vm-step-icon svg {
+  width: 13px;
+  height: 13px;
 }
 .vm-step-running .vm-step-label { animation: zk-pulse 1.2s infinite ease-in-out; }
-.vm-step-error .vm-step-label { color: var(--zkc-red); }
+.vm-step-error .vm-step-label,
+.vm-step-error .vm-step-icon { color: var(--zkc-red); }
 .vm-step-rejected .vm-step-label { text-decoration: line-through; }
-.vm-step details { margin-top: 4px; }
-.vm-step summary { cursor: pointer; }
+.vm-step details {
+  flex-basis: 100%;
+  margin-top: 2px;
+}
+.vm-step summary {
+  cursor: pointer;
+  color: var(--zkc-faint);
+}
 .vm-step pre {
-  background: var(--zkc-panel);
-  border: 1px solid var(--zkc-border);
-  border-radius: 6px;
+  background: var(--zkc-lowest);
+  border: 1px solid var(--zkc-border-soft);
+  border-radius: 4px;
   padding: 6px 8px;
   max-height: 200px;
   overflow: auto;
-  font-size: 0.95em;
+  font-size: 11px;
   white-space: pre-wrap;
   word-break: break-word;
 }
-.zk-model-badge { opacity: 0.85; }
+.zk-model-badge {
+  padding-top: 8px;
+  font-family: var(--font-monospace);
+  font-size: 10px;
+}
 
-/* ---- approval card (file change) ---- */
+/* ---- approval card (applying changes) ---- */
 .vm-approve {
-  background: var(--zkc-panel);
+  margin: 10px 12px;
+  background: var(--zkc-high);
   border: 1px solid var(--zkc-border);
-  border-radius: 10px;
+  border-radius: 6px;
   padding: 10px 12px;
-  font-size: 0.85em;
+  font-size: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
 }
 .vm-approve-head {
   display: flex;
   align-items: center;
   gap: 8px;
 }
+.vm-approve-icon {
+  display: flex;
+  color: var(--zkc-primary);
+}
+.vm-approve-icon svg {
+  width: 14px;
+  height: 14px;
+}
 .vm-approve-title {
-  font-weight: 600;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--zkc-primary);
   flex: 1 1 auto;
   min-width: 0;
   overflow: hidden;
@@ -242,16 +430,17 @@
 .vm-diff-stats {
   display: flex;
   gap: 6px;
+  font-family: var(--font-monospace);
+  font-size: 11px;
   font-variant-numeric: tabular-nums;
-  font-size: 0.9em;
 }
 .vm-diff-plus { color: var(--zkc-green); }
 .vm-diff-minus { color: var(--zkc-red); }
 .vm-diff { margin-top: 8px; }
 .vm-diff summary {
   cursor: pointer;
-  color: var(--zkc-muted);
-  font-size: 0.9em;
+  color: var(--zkc-faint);
+  font-size: 11px;
 }
 .vm-diff pre {
   margin: 6px 0 0;
@@ -259,13 +448,22 @@
   overflow: auto;
   white-space: pre-wrap;
   word-break: break-word;
-  font-size: 0.92em;
+  font-family: var(--font-monospace);
+  font-size: 11px;
+  line-height: 1.5;
   padding: 8px;
-  border-radius: 6px;
-  background: var(--zkc-bg);
+  border-radius: 4px;
+  background: var(--zkc-lowest);
+  border: 1px solid var(--zkc-border-soft);
 }
-.vm-diff-before { border-left: 3px solid var(--zkc-red); }
-.vm-diff-after { border-left: 3px solid var(--zkc-green); }
+.vm-diff-before {
+  color: var(--zkc-red);
+  text-decoration: line-through;
+  opacity: 0.75;
+}
+.vm-diff-after {
+  color: var(--zkc-green);
+}
 .vm-approve-btns {
   display: flex;
   gap: 8px;
@@ -276,22 +474,32 @@
 .zk-cmd-btns button {
   background: transparent;
   border: 1px solid var(--zkc-border);
-  color: var(--zkc-text);
-  border-radius: 999px;
-  padding: 4px 14px;
-  font-size: 0.9em;
+  color: var(--zkc-muted);
+  border-radius: 4px;
+  padding: 4px 12px;
+  font-size: 12px;
+  font-weight: 500;
   cursor: pointer;
   box-shadow: none;
+  height: auto;
+}
+.vm-approve-btns button:hover,
+.zk-cmd-btns button:hover {
+  background: var(--zkc-highest);
+  color: var(--zkc-text);
 }
 .vm-approve-btns button.mod-cta,
 .zk-cmd-btns button.mod-cta {
-  background: var(--zkc-cta);
-  color: var(--zkc-cta-text);
-  border-color: var(--zkc-cta);
-  font-weight: 600;
+  background: var(--zkc-accent-bg);
+  color: var(--zkc-accent-fg);
+  border-color: var(--zkc-accent-bg);
+}
+.vm-approve-btns button.mod-cta:hover,
+.zk-cmd-btns button.mod-cta:hover {
+  opacity: 0.9;
 }
 .vm-approve-verdict {
-  font-size: 0.85em;
+  font-size: 11px;
   color: var(--zkc-muted);
   margin-top: 8px;
   display: inline-block;
@@ -299,7 +507,7 @@
 .vm-approved { border-color: var(--zkc-green); opacity: 0.85; }
 .vm-rejected { border-color: var(--zkc-red); opacity: 0.7; }
 
-/* ---- /command picker ---- */
+/* ---- /command picker (legacy buttons row) ---- */
 .zk-cmd-btns {
   display: flex;
   gap: 6px;
@@ -307,14 +515,64 @@
   flex-wrap: wrap;
 }
 
-/* ---- input card ---- */
-.zk-inputcard {
+/* ---- input area ---- */
+.zk-inputwrap {
+  position: relative;
   flex: 0 0 auto;
-  margin: 8px 10px 4px;
-  background: var(--zkc-panel);
+  padding: 12px;
+  border-top: 1px solid var(--zkc-border-soft);
+  background: var(--zkc-bg);
+}
+.zk-inputcard {
+  background: var(--zkc-lowest);
   border: 1px solid var(--zkc-border);
-  border-radius: 12px;
-  padding: 8px 10px 6px;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.zk-inputcard:focus-within {
+  border-color: var(--zkc-primary);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--zkc-primary) 50%, transparent);
+}
+.zk-ctxrow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px 5px;
+  border-bottom: 1px solid var(--zkc-border-soft);
+  font-size: 10px;
+  color: var(--zkc-muted);
+}
+.zk-ctx-icon {
+  display: flex;
+}
+.zk-ctx-icon svg {
+  width: 12px;
+  height: 12px;
+}
+.zk-ctx-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+.zk-ctx-x {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  color: var(--zkc-faint);
+  cursor: pointer;
+  padding: 2px;
+  height: auto;
+}
+.zk-ctx-x:hover { color: var(--zkc-text); }
+.zk-ctx-x svg {
+  width: 12px;
+  height: 12px;
 }
 .zk-inputcard textarea {
   width: 100%;
@@ -322,9 +580,10 @@
   border: none;
   background: transparent;
   color: var(--zkc-text);
-  font-size: 0.88em;
+  font-size: 13px;
   line-height: 1.5;
-  padding: 2px 2px 6px;
+  padding: 10px 10px 6px;
+  min-height: 40px;
   box-shadow: none;
 }
 .zk-inputcard textarea:focus {
@@ -332,12 +591,13 @@
   box-shadow: none;
 }
 .zk-inputcard textarea::placeholder {
-  color: var(--zkc-muted);
+  color: color-mix(in srgb, var(--zkc-muted) 55%, transparent);
 }
 .zk-toolbar {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
+  padding: 0 8px 8px;
 }
 .zk-toolbar-spacer { flex: 1 1 auto; }
 .zettelkasten-ai .zk-select {
@@ -345,43 +605,125 @@
   border: none;
   box-shadow: none;
   color: var(--zkc-muted);
-  font-size: 0.78em;
+  font-size: 11px;
+  font-weight: 500;
   padding: 2px 4px;
   cursor: pointer;
-  max-width: 130px;
+  max-width: 120px;
+  height: auto;
 }
 .zettelkasten-ai .zk-select:hover { color: var(--zkc-text); }
 .zettelkasten-ai .zk-select option {
-  background: var(--zkc-panel);
+  background: var(--zkc-high);
   color: var(--zkc-text);
 }
 .zk-send {
   width: 28px;
   height: 28px;
-  border-radius: 50%;
+  border-radius: 6px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--zkc-cta);
-  color: var(--zkc-cta-text);
+  background: var(--zkc-accent-bg);
+  color: var(--zkc-accent-fg);
   border: none;
   cursor: pointer;
   box-shadow: none;
   padding: 0;
+  flex: 0 0 auto;
 }
-.zk-send:hover { opacity: 0.85; }
-.zk-send svg { width: 15px; height: 15px; }
+.zk-send:hover { opacity: 0.9; }
+.zk-send svg {
+  width: 15px;
+  height: 15px;
+}
 
-/* ---- usage footer ---- */
+/* ---- command palette ---- */
+.zk-palette {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: calc(100% + 4px);
+  background: var(--zkc-high);
+  border: 1px solid var(--zkc-border);
+  border-radius: 6px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  overflow: hidden;
+  z-index: 30;
+}
+.zk-palette-list {
+  max-height: 300px;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+.zk-palette-empty {
+  padding: 12px;
+  font-size: 12px;
+  color: var(--zkc-faint);
+  text-align: center;
+}
+.zk-palette-group {
+  padding: 6px 10px 3px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--zkc-faint);
+}
+.zk-palette-group:not(:first-child) {
+  border-top: 1px solid var(--zkc-border-soft);
+  margin-top: 4px;
+  padding-top: 8px;
+}
+.zk-palette-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border-left: 2px solid transparent;
+  cursor: pointer;
+}
+.zk-palette-item.is-active {
+  background: var(--zkc-highest);
+  border-left-color: var(--zkc-primary);
+}
+.zk-palette-icon {
+  display: flex;
+  color: var(--zkc-muted);
+  flex: 0 0 auto;
+}
+.zk-palette-item.is-active .zk-palette-icon {
+  color: var(--zkc-primary);
+}
+.zk-palette-icon svg {
+  width: 16px;
+  height: 16px;
+}
+.zk-palette-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--zkc-text);
+}
+.zk-palette-sub {
+  font-size: 11px;
+  color: var(--zkc-faint);
+}
+
+/* ---- footer ---- */
 .zk-footer {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  padding: 2px 14px 8px;
-  font-size: 0.72em;
-  color: var(--zkc-muted);
+  padding: 0 14px 8px;
+  font-family: var(--font-monospace);
+  font-size: 10px;
+  color: var(--zkc-faint);
+  background: var(--zkc-bg);
 }
-.zk-footer-right { margin-left: auto; }
+.zk-footer-right {
+  margin-left: auto;
+  opacity: 0.7;
+}
 
 /* ---- first-run onboarding (Obsidian-themed modal) ---- */
 .zk-onboarding { max-width: 560px; }

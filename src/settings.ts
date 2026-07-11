@@ -15,7 +15,7 @@ export interface ZettelkastenAISettings {
   model: string;
   claudeCodePath: string;
   claudeCodeProxy: string;
-  chatTheme: "dark" | "light";
+  chatTheme: "auto" | "dark" | "light";
   topK: number;
   vaultQA: boolean;
   debugMode: boolean;
@@ -39,7 +39,7 @@ export const DEFAULT_SETTINGS: ZettelkastenAISettings = {
   model: "deepseek-chat",
   claudeCodePath: "claude",
   claudeCodeProxy: "",
-  chatTheme: "dark",
+  chatTheme: "auto",
   topK: 8,
   vaultQA: true,
   debugMode: false,
@@ -123,14 +123,15 @@ export class ZettelkastenAISettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Chat theme")
-      .setDesc("Black or white, independent of the Obsidian theme. Also toggleable from the chat header.")
+      .setDesc("Auto follows the Obsidian theme; Black / White force one look. Also cycleable from the chat header.")
       .addDropdown((d) =>
         d
+          .addOption("auto", "Auto (follow Obsidian)")
           .addOption("dark", "Black")
           .addOption("light", "White")
           .setValue(s.chatTheme)
           .onChange(async (v) => {
-            s.chatTheme = v as "dark" | "light";
+            s.chatTheme = v as "auto" | "dark" | "light";
             await save();
           }),
       );

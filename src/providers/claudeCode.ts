@@ -4,7 +4,7 @@ import { ChatMessage, ChatRequest, CompletionRequest, CompletionResult, LLMProvi
 // The CLI's own tools are disabled: the vault must only be reachable through
 // the plugin's tools (approval gate, index), never via direct filesystem access.
 const DISALLOWED_CLI_TOOLS =
-  "Bash,Read,Write,Edit,MultiEdit,NotebookEdit,Glob,Grep,LS,WebFetch,WebSearch,Task,TodoWrite";
+  "Bash,Read,Write,Edit,NotebookEdit,Glob,Grep,WebFetch,WebSearch,Task,TodoWrite";
 
 const TOOL_CALL_RE = /```tool_call\s*([\s\S]*?)```/g;
 
@@ -112,8 +112,12 @@ export class ClaudeCodeProvider implements LLMProvider {
       let full = "";
       let buf = "";
       let err = "";
+      let aborted = false;
 
-      signal?.addEventListener("abort", () => child.kill("SIGTERM"));
+      signal?.addEventListener("abort", () => {
+        aborted = true;
+        child.kill("SIGTERM");
+      });
       child.stdin.write(prompt);
       child.stdin.end();
 
@@ -143,7 +147,8 @@ export class ClaudeCodeProvider implements LLMProvider {
       });
       child.stderr.on("data", (d: Buffer) => (err += d.toString()));
       child.on("close", (code: number | null) => {
-        if (code === 0 || full) resolve(full);
+        if (aborted) reject(new DOMException("Aborted", "AbortError"));
+        else if (code === 0 || full) resolve(full);
         else reject(new Error(`claude exited ${code}: ${err.slice(0, 400)}`));
       });
       child.on("error", (e: Error) =>

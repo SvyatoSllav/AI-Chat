@@ -69,16 +69,22 @@ export class ChatView extends ItemView {
     tab.createSpan({ text: "New Chat" });
 
     const actions = this.headerEl.createDiv({ cls: "zk-actions" });
-    const themeBtn = actions.createEl("button", { cls: "clickable-icon zk-icon-btn", attr: { "aria-label": "Black / white theme" } });
-    const paintThemeIcon = () => setIcon(themeBtn, this.plugin.settings.chatTheme === "dark" ? "sun" : "moon");
+    const themeBtn = actions.createEl("button", { cls: "clickable-icon zk-icon-btn" });
+    const paintThemeIcon = () => {
+      const t = this.plugin.settings.chatTheme;
+      setIcon(themeBtn, t === "auto" ? "sun-moon" : t === "dark" ? "moon" : "sun");
+      themeBtn.setAttr("aria-label", `Theme: ${t === "auto" ? "auto (follows Obsidian)" : t === "dark" ? "black" : "white"}`);
+    };
     paintThemeIcon();
     themeBtn.addEventListener("click", async () => {
       const s = this.plugin.settings;
-      s.chatTheme = s.chatTheme === "dark" ? "light" : "dark";
+      s.chatTheme = s.chatTheme === "auto" ? "dark" : s.chatTheme === "dark" ? "light" : "auto";
       await this.plugin.saveSettings();
       this.applyTheme();
       paintThemeIcon();
     });
+    // Follow Obsidian theme switches while in auto mode.
+    this.registerEvent(this.app.workspace.on("css-change", () => this.applyTheme()));
     const newChat = actions.createEl("button", { cls: "clickable-icon zk-icon-btn", attr: { "aria-label": "New chat" } });
     setIcon(newChat, "plus");
     newChat.addEventListener("click", () => this.resetConversation());
@@ -111,7 +117,8 @@ export class ChatView extends ItemView {
   }
 
   private applyTheme() {
-    const dark = this.plugin.settings.chatTheme === "dark";
+    const t = this.plugin.settings.chatTheme;
+    const dark = t === "auto" ? document.body.classList.contains("theme-dark") : t === "dark";
     this.contentEl.toggleClass("zk-dark", dark);
     this.contentEl.toggleClass("zk-light", !dark);
   }

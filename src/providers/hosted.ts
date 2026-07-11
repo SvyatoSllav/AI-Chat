@@ -128,50 +128,56 @@ export class HostedProvider implements LLMProvider {
     }
     const url = this.backendUrl.replace(/\/+$/, "") + "/api/chat";
 
+    const payload = JSON.stringify({ messages: req.messages, ...(req.model ? { model: req.model } : {}), stream: true });
     let res: Response;
     try {
       res = await fetch(url, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${this.token}`,
-        },
-        body: JSON.stringify({ messages: req.messages, stream: true }),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.token}` },
+        body: payload,
         signal: req.signal,
       });
     } catch (e) {
       if (req.signal?.aborted) throw e;
-      if (Platform.isMobileApp) return this.chatViaRequestUrl(url, req, onDelta);
-      throw e;
+      // Network blip (e.g. Wi-Fi/VPN change → ERR_NETWORK_CHANGED) or mobile:
+      // retry once via requestUrl (non-streamed), which is more robust.
+      return this.chatViaRequestUrl(url, req, onDelta);
     }
     if (!res.ok || !res.body) {
-      throw new Error(await describeError(res.status, () => res.text()));
+      throw await describeError(res.status, () => res.text());
     }
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let full = "";
     let buf = "";
-    for (;;) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      const lines = buf.split("\n");
-      buf = lines.pop() ?? "";
-      for (const line of lines) {
-        if (!line.startsWith("data:")) continue;
-        const data = line.slice(5).trim();
-        if (!data || data === "[DONE]") continue;
-        try {
-          const delta = JSON.parse(data).choices?.[0]?.delta?.content;
-          if (delta) {
-            full += delta;
-            onDelta(delta);
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data:")) continue;
+          const data = line.slice(5).trim();
+          if (!data || data === "[DONE]") continue;
+          try {
+            const delta = JSON.parse(data).choices?.[0]?.delta?.content;
+            if (delta) {
+              full += delta;
+              onDelta(delta);
+            }
+          } catch {
+            /* keep-alive / partial frame */
           }
-        } catch {
-          /* keep-alive / partial frame */
         }
       }
+    } catch (e) {
+      // Stream cut mid-flight (network change). If nothing arrived yet, retry
+      // non-streamed; otherwise return what we have.
+      if (req.signal?.aborted) throw e;
+      if (!full) return this.chatViaRequestUrl(url, req, onDelta);
     }
     return full;
   }
@@ -184,15 +190,12 @@ export class HostedProvider implements LLMProvider {
     const res = await requestUrl({
       url,
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${this.token}`,
-      },
-      body: JSON.stringify({ messages: req.messages, stream: false }),
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${this.token}` },
+      body: JSON.stringify({ messages: req.messages, ...(req.model ? { model: req.model } : {}), stream: false }),
       throw: false,
     });
     if (res.status >= 400) {
-      throw new Error(await describeError(res.status, async () => res.text));
+      throw await describeError(res.status, async () => res.text);
     }
     const full: string = res.json?.choices?.[0]?.message?.content ?? "";
     if (full) onDelta(full);
@@ -200,7 +203,14 @@ export class HostedProvider implements LLMProvider {
   }
 }
 
-async function describeError(status: number, readBody: () => Promise<string> | string): Promise<string> {
+/** Error carrying an optional checkoutUrl so the UI can render a short link. */
+export class ChatError extends Error {
+  constructor(message: string, readonly checkoutUrl?: string) {
+    super(message);
+  }
+}
+
+async function describeError(status: number, readBody: () => Promise<string> | string): Promise<ChatError> {
   let detail = "";
   let checkoutUrl = "";
   try {
@@ -211,10 +221,10 @@ async function describeError(status: number, readBody: () => Promise<string> | s
   } catch {
     /* non-JSON body */
   }
-  if (status === 401) return "Session expired — sign in again in ZettelkastenAI settings.";
-  if (status === 402) return `${detail || "Free messages used up"}. Subscribe: ${checkoutUrl || "see settings"}`;
-  if (status === 503) return detail || "Hosted model is temporarily unavailable.";
-  return `ZettelkastenAI backend HTTP ${status}: ${detail}`;
+  if (status === 401) return new ChatError("Session expired — sign in again in ZettelkastenAI settings.");
+  if (status === 402) return new ChatError(detail?.replace(/\.?\s*Subscribe:.*$/i, "") || "Free messages used up.", checkoutUrl);
+  if (status === 503) return new ChatError(detail || "Hosted model is temporarily unavailable.");
+  return new ChatError(`ZettelkastenAI backend HTTP ${status}: ${detail}`);
 }
 
 // ---------- account API used by the settings tab ----------

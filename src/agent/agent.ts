@@ -34,7 +34,7 @@ export interface AgentCallbacks {
 export interface AgentOptions {
   autoApprove: boolean;
   maxSteps: number;
-  modelTier?: "fast" | "smart";
+  model?: string; // GLM model id (or "fast"/"smart" alias)
   signal?: AbortSignal;
 }
 
@@ -66,7 +66,7 @@ export async function runAgent(
   for (let step = 0; step < opts.maxSteps; step++) {
     if (opts.signal?.aborted) throw new DOMException("Aborted", "AbortError");
 
-    const res = await provider.complete({ messages, tools: TOOL_SPECS, signal: opts.signal, firstOfTurn: step === 0, model: opts.modelTier });
+    const res = await provider.complete({ messages, tools: TOOL_SPECS, signal: opts.signal, firstOfTurn: step === 0, model: opts.model });
     if (res.text) {
       finalText = res.text;
       cb.onText(res.text);

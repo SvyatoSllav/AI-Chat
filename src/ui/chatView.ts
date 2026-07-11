@@ -4,13 +4,12 @@ import { ChatMessage } from "../providers/types";
 import { runAgent, agentSystemPrompt, AgentStep } from "../agent/agent";
 import { ToolResult } from "../agent/tools";
 import { EFFORTS, EFFORT_ORDER, EffortId } from "../agent/effort";
-import { chooseModel, MODELS, ModelChoice } from "../agent/modelRouter";
+import { chooseModel, ModelChoice, LITE_MODELS, MODEL_BY_ID, modelLabel } from "../agent/modelRouter";
 import { fetchAccount } from "../providers/hosted";
 
 const MODEL_OPTIONS: { value: ModelChoice; label: string }[] = [
-  { value: "auto", label: "Auto" },
-  { value: "fast", label: "GLM-4.5-air" },
-  { value: "smart", label: "GLM-5.2" },
+  { value: "auto", label: "Auto (air ⇄ 5.2)" },
+  ...LITE_MODELS.map((m) => ({ value: m.id, label: m.label })),
 ];
 
 export const VIEW_TYPE_CHAT = "zettelkasten-ai-chat";
@@ -266,7 +265,7 @@ export class ChatView extends ItemView {
   }
 
   private modelLabel(m: ModelChoice): string {
-    return m === "auto" ? "Auto (air ⇄ 5.2)" : MODELS[m].label;
+    return modelLabel(m);
   }
 
   // ---------- welcome / quick actions ----------
@@ -511,10 +510,11 @@ export class ChatView extends ItemView {
     const [name, ...rest] = cmd.slice(1).trim().split(/\s+/);
     const arg = (rest.join(" ") || "").toLowerCase();
     if (name === "model") {
-      const map: Record<string, ModelChoice> = { auto: "auto", fast: "fast", air: "fast", "glm-4.5-air": "fast", smart: "smart", "5.2": "smart", "glm-5.2": "smart" };
-      if (arg && map[arg]) {
-        this.setModel(map[arg]);
-        this.renderMsg("assistant", `Model set to ${this.modelLabel(map[arg])}.`);
+      const map: Record<string, ModelChoice> = { auto: "auto", air: "glm-4.5-air", fast: "glm-4.5-air", smart: "glm-5.2", "5.2": "glm-5.2", turbo: "glm-5-turbo", "4.7": "glm-4.7", "4.6": "glm-4.6" };
+      const pick = map[arg] || (MODEL_BY_ID[arg] ? arg : "");
+      if (arg && pick) {
+        this.setModel(pick);
+        this.renderMsg("assistant", `Model set to ${this.modelLabel(pick)}.`);
         return;
       }
       const wrap = this.msgsEl.createDiv({ cls: "vm-msg vm-assistant zk-cmd" });
@@ -547,7 +547,7 @@ export class ChatView extends ItemView {
     const routed = chooseModel(q, s.effort, s.modelChoice);
     // GLM routing only applies to the hosted subscription; Claude Code and BYOK
     // use whatever model the CLI/endpoint is configured with.
-    if (s.provider === "hosted") this.renderModelBadge(routed.tier, routed.reason);
+    if (s.provider === "hosted") this.renderModelBadge(routed.model, routed.label, routed.reason);
 
     const messages: ChatMessage[] = [
       { role: "system", content: agentSystemPrompt(activePath, effort.directive) },
@@ -563,7 +563,7 @@ export class ChatView extends ItemView {
         this.app,
         this.plugin.index,
         messages,
-        { autoApprove: s.autoApprove, maxSteps: effort.maxSteps, modelTier: routed.tier, signal: this.abort!.signal },
+        { autoApprove: s.autoApprove, maxSteps: effort.maxSteps, model: routed.model, signal: this.abort!.signal },
         {
           onText: (text) => {
             if (!text.trim()) return;
@@ -586,15 +586,15 @@ export class ChatView extends ItemView {
     } catch (e) {
       thinking.remove();
       const msg = e instanceof Error ? e.message : String(e);
-      if (!/abort/i.test(msg)) this.renderMsg("assistant", `⚠️ ${msg}`);
+      if (!/abort/i.test(msg)) this.renderError(msg, (e as any)?.checkoutUrl);
     }
   }
 
-  private renderModelBadge(tier: "fast" | "smart", reason: string) {
+  private renderModelBadge(model: string, label: string, reason: string) {
     const el = this.msgsEl.createDiv({ cls: "vm-step zk-model-badge" });
     const ic = el.createSpan({ cls: "vm-step-icon" });
-    setIcon(ic, tier === "smart" ? "brain" : "zap");
-    el.createSpan({ cls: "vm-step-label", text: `${MODELS[tier].label} · ${reason}` });
+    setIcon(ic, MODEL_BY_ID[model]?.reasoning ? "brain" : "zap");
+    el.createSpan({ cls: "vm-step-label", text: `${label} · ${reason}` });
     this.scroll();
   }
 
@@ -697,10 +697,11 @@ export class ChatView extends ItemView {
       { role: "user", content: q },
     ];
 
+    const routed = chooseModel(q, s.effort, s.modelChoice);
     const { block, body } = this.renderAssistantBlock(true);
     try {
       let acc = "";
-      const full = await this.plugin.getProvider().chat({ messages, signal: this.abort!.signal }, (delta) => {
+      const full = await this.plugin.getProvider().chat({ messages, model: routed.model, signal: this.abort!.signal }, (delta) => {
         acc += delta;
         body.setText(acc); // replaces the thinking indicator
         this.scroll();
@@ -711,7 +712,9 @@ export class ChatView extends ItemView {
       this.history.push({ role: "user", content: q }, { role: "assistant", content: full });
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      body.setText(/abort/i.test(msg) ? "⏹ stopped" : `⚠️ ${msg}`);
+      const checkoutUrl = (e as any)?.checkoutUrl;
+      if (/abort/i.test(msg)) { body.setText("⏹ stopped"); }
+      else { body.empty(); this.fillError(body, msg, checkoutUrl); }
     }
   }
 
@@ -722,6 +725,23 @@ export class ChatView extends ItemView {
     const ic = h.createSpan({ cls: "zk-msghead-icon" });
     setIcon(ic, role === "user" ? "user" : "zettelkasten-ai");
     h.createSpan({ cls: "zk-msghead-name", text: role === "user" ? "You" : "ZettelkastenAI" });
+  }
+
+  /** Error as an assistant message, with a short "Subscribe" link when the
+   *  error carries a checkout URL (instead of dumping the long raw URL). */
+  private renderError(msg: string, checkoutUrl?: string) {
+    const wrap = this.msgsEl.createDiv({ cls: "vm-msg vm-assistant" });
+    this.roleHeader(wrap, "assistant");
+    this.fillError(wrap.createDiv({ cls: "vm-msg-body" }), msg, checkoutUrl);
+    this.scroll();
+  }
+
+  private fillError(body: HTMLElement, msg: string, checkoutUrl?: string) {
+    body.createSpan({ text: `⚠️ ${msg} ` });
+    if (checkoutUrl) {
+      const link = body.createEl("a", { cls: "zk-subscribe", text: "Subscribe", href: checkoutUrl });
+      link.addEventListener("click", (e) => { e.preventDefault(); window.open(checkoutUrl); });
+    }
   }
 
   private renderAssistantBlock(thinking: boolean): { block: HTMLElement; body: HTMLElement } {

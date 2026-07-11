@@ -96,6 +96,7 @@ export class ChatView extends ItemView {
   private modelSelect?: HTMLSelectElement;
 
   private buildModelSelector(parent: HTMLElement) {
+    if (this.plugin.settings.provider !== "hosted") return; // GLM tiers are subscription-only
     const sel = parent.createEl("select", { cls: "dropdown zk-model", attr: { "aria-label": "Model" } });
     for (const o of MODEL_OPTIONS) sel.createEl("option", { value: o.value, text: o.label });
     sel.value = this.plugin.settings.modelChoice;
@@ -233,7 +234,9 @@ export class ChatView extends ItemView {
     const provider = this.plugin.getProvider();
     const activePath = this.app.workspace.getActiveFile()?.path;
     const routed = chooseModel(q, s.effort, s.modelChoice);
-    this.renderModelBadge(routed.tier, routed.reason);
+    // GLM routing only applies to the hosted subscription; Claude Code and BYOK
+    // use whatever model the CLI/endpoint is configured with.
+    if (s.provider === "hosted") this.renderModelBadge(routed.tier, routed.reason);
 
     const messages: ChatMessage[] = [
       { role: "system", content: agentSystemPrompt(activePath, effort.directive) },

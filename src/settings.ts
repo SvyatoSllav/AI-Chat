@@ -1,10 +1,11 @@
-import { App, Notice, PluginSettingTab, Setting } from "obsidian";
+import { App, Notice, Platform, PluginSettingTab, Setting } from "obsidian";
 import type ZettelkastenAIPlugin from "./main";
 import { fetchAccount, requestCode, verifyCode } from "./providers/hosted";
 
 export type ProviderId = "hosted" | "claude-code" | "openai-compatible";
 
 export interface ZettelkastenAISettings {
+  onboarded: boolean;
   provider: ProviderId;
   backendUrl: string;
   authEmail: string;
@@ -26,6 +27,7 @@ export interface ZettelkastenAISettings {
 // Default is the hosted subscription (GLM): sign in with email, 5 messages
 // free, then paid. BYOK and Claude Code CLI stay available — see PLAN.md §3, §6.
 export const DEFAULT_SETTINGS: ZettelkastenAISettings = {
+  onboarded: false,
   provider: "hosted",
   backendUrl: "https://zettelkasten-ai.com",
   authEmail: "",
@@ -56,20 +58,18 @@ export class ZettelkastenAISettingTab extends PluginSettingTab {
     const save = () => this.plugin.saveSettings();
 
     new Setting(containerEl)
-      .setName("Provider")
-      .setDesc("ZettelkastenAI subscription — no API keys, 5 free messages. Or bring your own key / Claude Code CLI.")
-      .addDropdown((d) =>
-        d
-          .addOption("hosted", "ZettelkastenAI (subscription, no keys)")
-          .addOption("openai-compatible", "OpenAI-compatible endpoint (your key)")
-          .addOption("claude-code", "Claude Code CLI (desktop)")
-          .setValue(s.provider)
-          .onChange(async (v) => {
-            s.provider = v as ProviderId;
-            await save();
-            this.display();
-          }),
-      );
+      .setName("AI provider")
+      .setDesc("ZettelkastenAI subscription (no API keys, 5 free messages), your Claude Code CLI, or a self-hosted / own-key endpoint.")
+      .addDropdown((d) => {
+        d.addOption("hosted", "ZettelkastenAI subscription (no keys)");
+        if (Platform.isDesktopApp) d.addOption("claude-code", "Claude Code CLI (your Claude account)");
+        d.addOption("openai-compatible", "Self-hosted / your own key (OpenAI-compatible)");
+        d.setValue(s.provider).onChange(async (v) => {
+          s.provider = v as ProviderId;
+          await save();
+          this.display();
+        });
+      });
 
     if (s.provider === "hosted") {
       this.displayAccount(containerEl);
@@ -96,7 +96,7 @@ export class ZettelkastenAISettingTab extends PluginSettingTab {
     } else {
       new Setting(containerEl)
         .setName("Claude Code binary")
-        .setDesc("Path to the official `claude` CLI (default: resolved from PATH).")
+        .setDesc("Path to the official `claude` CLI (default: resolved from PATH). Uses your existing Claude subscription; sign in once with `claude` in a terminal. Desktop only.")
         .addText((t) =>
           t.setValue(s.claudeCodePath).onChange(async (v) => {
             s.claudeCodePath = v.trim() || "claude";
@@ -109,7 +109,7 @@ export class ZettelkastenAISettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("Agent mode")
-      .setDesc("Let the assistant use tools to read, create, edit and delete notes (needs the subscription or an OpenAI-compatible key). Off = plain Q&A over your vault.")
+      .setDesc("Let the assistant use tools to read, create, edit and delete notes. Works with all providers. Off = plain Q&A over your vault.")
       .addToggle((t) =>
         t.setValue(s.agentMode).onChange(async (v) => {
           s.agentMode = v;

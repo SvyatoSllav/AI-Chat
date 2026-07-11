@@ -1,10 +1,20 @@
 import { Platform } from "obsidian";
-import { ChatRequest, LLMProvider } from "./types";
+import { ChatMessage, ChatRequest, CompletionRequest, CompletionResult, LLMProvider, ToolCall, ToolSpec } from "./types";
+
+// The CLI's own tools are disabled: the vault must only be reachable through
+// the plugin's tools (approval gate, index), never via direct filesystem access.
+const DISALLOWED_CLI_TOOLS =
+  "Bash,Read,Write,Edit,MultiEdit,NotebookEdit,Glob,Grep,LS,WebFetch,WebSearch,Task,TodoWrite";
+
+const TOOL_CALL_RE = /```tool_call\s*([\s\S]*?)```/g;
 
 /**
- * Dev-stage default: shells out to the user's official Claude Code CLI.
- * Desktop only. We never touch OAuth tokens — only run the official binary
- * the user installed and authenticated themselves.
+ * Uses the official Claude Code CLI the user installed and authenticated
+ * themselves (we never touch OAuth tokens). Desktop only.
+ *
+ * Agent mode is emulated: the CLI has no OpenAI tool-calling API, so tools are
+ * described in the prompt and calls are parsed back from fenced `tool_call`
+ * JSON blocks.
  */
 export class ClaudeCodeProvider implements LLMProvider {
   id = "claude-code";
@@ -13,27 +23,33 @@ export class ClaudeCodeProvider implements LLMProvider {
   constructor(private binPath: string) {}
 
   async chat(req: ChatRequest, onDelta: (chunk: string) => void): Promise<string> {
+    return this.run(serializeMessages(req.messages), req.signal, onDelta);
+  }
+
+  async complete(req: CompletionRequest): Promise<CompletionResult> {
+    const prompt = [serializeMessages(req.messages), toolProtocol(req.tools ?? [])].join("\n\n");
+    const raw = await this.run(prompt, req.signal, () => {});
+    return parseToolCalls(raw);
+  }
+
+  private run(prompt: string, signal: AbortSignal | undefined, onDelta: (chunk: string) => void): Promise<string> {
     if (!Platform.isDesktopApp) {
       throw new Error("Claude Code provider is desktop-only. Switch provider in settings.");
     }
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     const { spawn } = require("child_process") as typeof import("child_process");
 
-    const prompt = req.messages
-      .map((m) => `${m.role.toUpperCase()}:\n${m.content}`)
-      .join("\n\n");
-
     return new Promise<string>((resolve, reject) => {
       const child = spawn(
         this.binPath || "claude",
-        ["-p", "--output-format", "stream-json", "--verbose"],
+        ["-p", "--output-format", "stream-json", "--verbose", "--disallowedTools", DISALLOWED_CLI_TOOLS],
         { stdio: ["pipe", "pipe", "pipe"] },
       );
       let full = "";
       let buf = "";
       let err = "";
 
-      req.signal?.addEventListener("abort", () => child.kill("SIGTERM"));
+      signal?.addEventListener("abort", () => child.kill("SIGTERM"));
       child.stdin.write(prompt);
       child.stdin.end();
 
@@ -70,5 +86,76 @@ export class ClaudeCodeProvider implements LLMProvider {
         reject(new Error(`Cannot run Claude Code CLI (${e.message}). Is it installed and on PATH?`)),
       );
     });
+  }
+}
+
+function serializeMessages(messages: ChatMessage[]): string {
+  return messages
+    .map((m) => {
+      if (m.role === "tool") return `TOOL RESULT (${m.name ?? "tool"}):\n${m.content}`;
+      let text = `${m.role.toUpperCase()}:\n${m.content}`;
+      // Re-render past emulated calls so the model sees its own history.
+      for (const tc of m.tool_calls ?? []) {
+        text += `\n\`\`\`tool_call\n${JSON.stringify({ name: tc.function.name, arguments: safeParse(tc.function.arguments) })}\n\`\`\``;
+      }
+      return text;
+    })
+    .join("\n\n");
+}
+
+function toolProtocol(tools: ToolSpec[]): string {
+  const catalog = tools
+    .map((t) => `- ${t.function.name}: ${t.function.description}\n  arguments schema: ${JSON.stringify(t.function.parameters)}`)
+    .join("\n");
+  return [
+    "TOOL PROTOCOL:",
+    "The vault is ONLY reachable through the tools below — never through your built-in file or shell tools.",
+    "To call a tool, end your reply with exactly one fenced block:",
+    '```tool_call\n{"name": "<tool name>", "arguments": { ... }}\n```',
+    "One tool call per reply. The result arrives as a TOOL RESULT message; then continue.",
+    "When the task is fully done, reply with the final answer in plain text and NO tool_call block.",
+    "Available tools:",
+    catalog,
+  ].join("\n");
+}
+
+function parseToolCalls(raw: string): CompletionResult {
+  const toolCalls: ToolCall[] = [];
+  let i = 0;
+  const text = raw
+    .replace(TOOL_CALL_RE, (match, body: string) => {
+      const call = toToolCall(body, i);
+      if (!call) return match; // malformed block stays visible as text
+      toolCalls.push(call);
+      i++;
+      return "";
+    })
+    .trim();
+
+  // Some replies come back as one bare JSON object instead of a fenced block.
+  if (!toolCalls.length && text.startsWith("{") && text.endsWith("}")) {
+    const call = toToolCall(text, 0);
+    if (call) return { text: "", toolCalls: [call] };
+  }
+  return { text, toolCalls };
+}
+
+function toToolCall(body: string, i: number): ToolCall | null {
+  const obj = safeParse(body.trim());
+  const name = obj?.name ?? obj?.tool;
+  if (!name || typeof name !== "string") return null;
+  const args = obj.arguments ?? obj.args ?? obj.input ?? {};
+  return {
+    id: `cc-${Date.now()}-${i}`,
+    name,
+    arguments: typeof args === "string" ? args : JSON.stringify(args),
+  };
+}
+
+function safeParse(s: string): any {
+  try {
+    return JSON.parse(s);
+  } catch {
+    return null;
   }
 }

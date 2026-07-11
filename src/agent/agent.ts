@@ -59,7 +59,7 @@ export async function runAgent(
   cb: AgentCallbacks,
 ): Promise<string> {
   if (!provider.complete) {
-    throw new Error("This provider doesn't support agent tools. Switch to the subscription or an OpenAI-compatible endpoint in settings.");
+    throw new Error("This provider doesn't support agent tools. Switch provider in settings.");
   }
 
   let finalText = "";

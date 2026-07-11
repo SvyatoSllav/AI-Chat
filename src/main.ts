@@ -4,6 +4,7 @@ import { VaultIndex } from "./rag/indexer";
 import { createProvider } from "./providers";
 import { LLMProvider } from "./providers/types";
 import { ChatView, VIEW_TYPE_CHAT } from "./ui/chatView";
+import { OnboardingModal } from "./ui/onboarding";
 
 export default class ZettelkastenAIPlugin extends Plugin {
   settings!: ZettelkastenAISettings;
@@ -24,6 +25,7 @@ export default class ZettelkastenAIPlugin extends Plugin {
 
     // Index after layout is ready, never at app start (docs/large-vault.md §1)
     this.app.workspace.onLayoutReady(() => {
+      if (!this.settings.onboarded) new OnboardingModal(this.app, this).open();
       void this.buildIndex();
       this.registerEvent(
         this.app.vault.on("modify", (f) => {

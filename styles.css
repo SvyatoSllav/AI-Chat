@@ -173,3 +173,25 @@
 .vm-approve-verdict { font-size: 0.85em; color: var(--text-muted); margin-top: 8px; display: inline-block; }
 .vm-approved { border-color: var(--interactive-accent); opacity: 0.85; }
 .vm-rejected { border-color: var(--text-warning); opacity: 0.7; }
+
+/* ---- first-run onboarding ---- */
+.zk-onboarding { max-width: 560px; }
+.zk-onboard-sub { color: var(--text-muted); margin-top: 0; }
+.zk-onboard-card {
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin-top: 12px;
+}
+.zk-onboard-card:hover { border-color: var(--interactive-accent); }
+.zk-onboard-card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.zk-onboard-card-title { font-weight: 600; font-size: 1.05em; }
+.zk-onboard-badge {
+  font-size: 0.75em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--background-modifier-hover);
+  color: var(--text-muted);
+}
+.zk-onboard-card ul { margin: 6px 0 10px; padding-left: 20px; }
+.zk-onboard-card li { color: var(--text-muted); font-size: 0.9em; margin: 2px 0; }

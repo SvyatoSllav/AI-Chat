@@ -11,22 +11,74 @@ export interface AccountInfo {
   checkoutUrl: string;
 }
 
+/** A short-lived GLM credential for Pro users: chat goes client → Z.ai
+ *  directly, our backend only controls the subscription. */
+export interface Lease {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+  fastModel: string;
+  exp: number;
+}
+
 /**
- * Hosted subscription provider: our control plane proxies to GLM.
- * Auth is a JWT obtained via email code in settings. 5 messages free,
- * then the backend answers 402 with a checkout link.
+ * Hosted subscription provider. Free tier is proxied through our control
+ * plane (the key never reaches the client). Pro accounts fetch a lease and
+ * talk to Z.ai directly — no chat traffic through our server.
  */
 export class HostedProvider implements LLMProvider {
   id = "hosted";
   supportsMobile = true;
+
+  private lease: Lease | null = null;
+  private leaseDeniedAt = 0; // last 402 — don't re-ask for a few minutes
 
   constructor(
     private backendUrl: string,
     private token: string,
   ) {}
 
+  private async ensureLease(): Promise<Lease | null> {
+    if (this.lease && this.lease.exp > Date.now() + 60_000) return this.lease;
+    if (Date.now() - this.leaseDeniedAt < 5 * 60_000) return null;
+    try {
+      const res = await requestUrl({
+        url: this.backendUrl.replace(/\/+$/, "") + "/api/lease",
+        method: "GET",
+        headers: { Authorization: `Bearer ${this.token}` },
+        throw: false,
+      });
+      if (res.status === 200 && res.json?.apiKey) {
+        this.lease = res.json as Lease;
+        return this.lease;
+      }
+    } catch {
+      /* network — fall back to proxy */
+    }
+    this.leaseDeniedAt = Date.now();
+    return null;
+  }
+
+  private leaseModel(lease: Lease, tier?: string): string {
+    return tier === "fast" ? lease.fastModel : lease.model;
+  }
+
   async complete(req: CompletionRequest): Promise<CompletionResult> {
-    if (!this.token) throw new Error("Sign in first: ZettelkastenAI settings → Account → Send code.");
+    if (!this.token) throw new Error("Sign in first: ZettelkastenAI settings → Account → Sign in in browser.");
+    const lease = await this.ensureLease();
+    if (lease) {
+      try {
+        return await completeWithTools(
+          lease.baseUrl + "/chat/completions",
+          { Authorization: `Bearer ${lease.apiKey}` },
+          this.leaseModel(lease, req.model),
+          req,
+        );
+      } catch (e) {
+        if (/Auth failed|401/.test(e instanceof Error ? e.message : "")) this.lease = null; // key rotated → re-lease / proxy
+        else throw e;
+      }
+    }
     const url = this.backendUrl.replace(/\/+$/, "") + "/api/chat";
     return completeWithTools(
       url,
@@ -37,9 +89,42 @@ export class HostedProvider implements LLMProvider {
     );
   }
 
+  /** Direct Z.ai call (Pro lease). requestUrl → no CORS, but no streaming:
+   *  the full answer arrives in one delta. */
+  private async chatDirect(lease: Lease, req: ChatRequest, onDelta: (chunk: string) => void): Promise<string> {
+    const res = await requestUrl({
+      url: lease.baseUrl + "/chat/completions",
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${lease.apiKey}` },
+      body: JSON.stringify({ model: this.leaseModel(lease, req.model), messages: req.messages, stream: false }),
+      throw: false,
+    });
+    if (res.status === 401) {
+      this.lease = null;
+      throw new Error("lease-auth");
+    }
+    if (res.status >= 400) {
+      const detail = res.json?.error?.message ?? res.json?.error ?? "";
+      if (res.status === 429) throw new Error(detail || "GLM usage limit reached for this cycle — try Low effort or wait a bit.");
+      throw new Error(`Model HTTP ${res.status}: ${detail}`);
+    }
+    const full: string = res.json?.choices?.[0]?.message?.content ?? "";
+    if (full) onDelta(full);
+    return full;
+  }
+
   async chat(req: ChatRequest, onDelta: (chunk: string) => void): Promise<string> {
     if (!this.token) {
-      throw new Error("Sign in first: ZettelkastenAI settings → Account → Send code.");
+      throw new Error("Sign in first: ZettelkastenAI settings → Account → Sign in in browser.");
+    }
+    const lease = await this.ensureLease();
+    if (lease) {
+      try {
+        return await this.chatDirect(lease, req, onDelta);
+      } catch (e) {
+        if (!(e instanceof Error && e.message === "lease-auth")) throw e;
+        /* key rotated → fall through to the proxy path */
+      }
     }
     const url = this.backendUrl.replace(/\/+$/, "") + "/api/chat";
 
@@ -133,6 +218,40 @@ async function describeError(status: number, readBody: () => Promise<string> | s
 }
 
 // ---------- account API used by the settings tab ----------
+
+/** Starts the browser sign-in: returns a device code and the URL to open. */
+export async function deviceStart(backendUrl: string): Promise<{ device: string; url: string }> {
+  const res = await requestUrl({
+    url: backendUrl.replace(/\/+$/, "") + "/api/device/start",
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+    throw: false,
+  });
+  if (res.status >= 400) throw new Error(res.json?.error ?? `HTTP ${res.status}`);
+  return res.json as { device: string; url: string };
+}
+
+/** Polls until the user finishes signing in in the browser; resolves with the JWT. */
+export async function devicePoll(backendUrl: string, device: string, timeoutMs = 600_000, signal?: { cancelled: boolean }): Promise<string> {
+  const url = backendUrl.replace(/\/+$/, "") + "/api/device/poll";
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (signal?.cancelled) throw new Error("Sign-in cancelled");
+    await new Promise((r) => window.setTimeout(r, 2500));
+    const res = await requestUrl({
+      url,
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ device }),
+      throw: false,
+    });
+    if (res.status === 410) throw new Error("Sign-in session expired — try again");
+    if (res.status >= 400) continue; // transient
+    if (res.json?.token) return res.json.token as string;
+  }
+  throw new Error("Sign-in timed out — try again");
+}
 
 export async function requestCode(backendUrl: string, email: string): Promise<void> {
   const res = await requestUrl({

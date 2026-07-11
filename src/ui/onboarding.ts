@@ -26,7 +26,7 @@ export class OnboardingModal extends Modal {
       "ZettelkastenAI subscription",
       "Recommended",
       [
-        "No API keys — sign in with email, 5 free messages to try",
+        "No API keys — one-click sign-in in your browser, 5 free messages to try",
         "GLM 5.2 flagship model, works on desktop and mobile",
         "Fair pricing from $25/mo when you need more",
       ],

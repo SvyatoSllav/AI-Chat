@@ -1,6 +1,6 @@
 import { App, Notice, Platform, PluginSettingTab, Setting } from "obsidian";
 import type ZettelkastenAIPlugin from "./main";
-import { fetchAccount, requestCode, verifyCode } from "./providers/hosted";
+import { deviceStart, devicePoll, fetchAccount } from "./providers/hosted";
 
 export type ProviderId = "hosted" | "claude-code" | "openai-compatible";
 
@@ -51,11 +51,20 @@ export const DEFAULT_SETTINGS: ZettelkastenAISettings = {
 };
 
 export class ZettelkastenAISettingTab extends PluginSettingTab {
+  /** Cancels the browser sign-in poll when the tab closes or re-renders. */
+  private pollAbort = { cancelled: false };
+
   constructor(app: App, private plugin: ZettelkastenAIPlugin) {
     super(app, plugin);
   }
 
+  hide(): void {
+    this.pollAbort.cancelled = true;
+  }
+
   display(): void {
+    this.pollAbort.cancelled = true;
+    this.pollAbort = { cancelled: false };
     const { containerEl } = this;
     containerEl.empty();
     const s = this.plugin.settings;
@@ -212,44 +221,24 @@ export class ZettelkastenAISettingTab extends PluginSettingTab {
     const save = () => this.plugin.saveSettings();
 
     if (!s.authToken) {
-      let email = s.authEmail;
-      let code = "";
-      let codeSetting: Setting | null = null;
-
       new Setting(containerEl)
         .setName("Account")
-        .setDesc("Sign in with your email — we send a 6-digit code. 5 messages free, then subscription.")
-        .addText((t) => t.setPlaceholder("you@example.com").setValue(email).onChange((v) => (email = v.trim())))
+        .setDesc("Sign in in your browser — one click, no forms here. 5 messages free, then subscription.")
         .addButton((b) =>
-          b.setButtonText("Send code").setCta().onClick(async () => {
+          b.setButtonText("Sign in in browser").setCta().onClick(async () => {
+            b.setButtonText("Waiting for sign-in…").setDisabled(true);
             try {
-              await requestCode(s.backendUrl, email);
-              s.authEmail = email;
-              await save();
-              new Notice("Code sent — check your email.");
-              codeSetting?.settingEl.show();
-            } catch (e) {
-              new Notice(`⚠️ ${e instanceof Error ? e.message : e}`);
-            }
-          }),
-        );
-
-      codeSetting = new Setting(containerEl)
-        .setName("Verification code")
-        .addText((t) => t.setPlaceholder("123456").onChange((v) => (code = v.trim())))
-        .addButton((b) =>
-          b.setButtonText("Verify").setCta().onClick(async () => {
-            try {
-              s.authToken = await verifyCode(s.backendUrl, s.authEmail || email, code);
+              const { device, url } = await deviceStart(s.backendUrl);
+              window.open(url);
+              s.authToken = await devicePoll(s.backendUrl, device, 600_000, this.pollAbort);
               await save();
               new Notice("Signed in ✓");
-              this.display();
             } catch (e) {
               new Notice(`⚠️ ${e instanceof Error ? e.message : e}`);
             }
+            this.display();
           }),
         );
-      if (!s.authEmail) codeSetting.settingEl.hide();
       return;
     }
 

@@ -98,6 +98,11 @@ export class ClaudeCodeProvider implements LLMProvider {
     // Binary's dir on PATH so it can find its own helpers (node for npm installs).
     const env: NodeJS.ProcessEnv = { ...process.env, PATH: `${dirname(bin)}:${process.env.PATH ?? ""}` };
     if (this.proxy) {
+      // The claude CLI (v2.x, bun build) reads only the lowercase forms and
+      // ignores HTTPS_PROXY — set both cases so any version picks it up.
+      env.https_proxy = this.proxy;
+      env.http_proxy = this.proxy;
+      env.no_proxy = "localhost,127.0.0.1";
       env.HTTPS_PROXY = this.proxy;
       env.HTTP_PROXY = this.proxy;
       env.NO_PROXY = "localhost,127.0.0.1";

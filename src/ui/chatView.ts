@@ -779,10 +779,19 @@ export class ChatView extends ItemView {
   private async renderMarkdown(md: string, el: HTMLElement) {
     el.empty();
     await MarkdownRenderer.render(this.app, md, el, "", this);
+    const active = this.app.workspace.getActiveFile()?.path ?? "";
     el.querySelectorAll<HTMLAnchorElement>("a.internal-link").forEach((a) => {
+      const target = a.getAttribute("data-href") ?? a.textContent ?? "";
+      // The model sometimes cites category labels/headings it saw inside a note
+      // as [[wikilinks]] to notes that don't exist. Render those as plain text
+      // instead of a blank, broken, clickable link.
+      const dest = this.app.metadataCache.getFirstLinkpathDest(target, active);
+      if (!dest) {
+        a.replaceWith(document.createTextNode(a.textContent ?? target));
+        return;
+      }
       a.addEventListener("click", (e) => {
         e.preventDefault();
-        const target = a.getAttribute("data-href") ?? a.textContent ?? "";
         void this.app.workspace.openLinkText(target, "", false);
       });
     });

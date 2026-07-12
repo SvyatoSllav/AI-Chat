@@ -1,7 +1,7 @@
 {
   "id": "zettelkasten-ai",
   "name": "ZettelkastenAI",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "minAppVersion": "1.5.0",
   "description": "Chat with your vault. Retrieval-augmented answers with [[wikilink]] citations. Bring your own key or use the built-in subscription.",
   "author": "Svyatoslav",

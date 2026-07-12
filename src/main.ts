@@ -5,6 +5,7 @@ import { createProvider } from "./providers";
 import { LLMProvider } from "./providers/types";
 import { ChatView, VIEW_TYPE_CHAT } from "./ui/chatView";
 import { OnboardingModal } from "./ui/onboarding";
+import { runBenchmark } from "./benchmark";
 
 // Brand mark (landing/favicon.svg) as a monochrome currentColor icon:
 // linked zettel diamonds, no background plate.
@@ -37,6 +38,7 @@ export default class AIChatPlugin extends Plugin {
     this.addRibbonIcon("ai-chat", "Open AI Chat", () => void this.activateChat());
     this.addCommand({ id: "open-chat", name: "Open chat", callback: () => void this.activateChat() });
     this.addCommand({ id: "reindex", name: "Rebuild vault index", callback: () => void this.buildIndex() });
+    this.addCommand({ id: "run-benchmark", name: "Run benchmark", callback: () => void runBenchmark(this.app, this.index, this.settings) });
     this.addSettingTab(new AIChatSettingTab(this.app, this));
 
     // Index after layout is ready, never at app start (docs/large-vault.md §1)

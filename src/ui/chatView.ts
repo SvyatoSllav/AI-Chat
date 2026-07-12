@@ -207,7 +207,8 @@ export class ChatView extends ItemView {
     if (!s.authToken) return;
     try {
       const a = await fetchAccount(s.backendUrl, s.authToken);
-      left.setText(a.pro ? `Pro · renews ${new Date(a.proUntil!).toLocaleDateString()}` : `Usage: ${a.used}/${a.freeQuota} free`);
+      const tierLabel = a.tier === "lite" ? "Lite" : "Pro";
+      left.setText(a.pro ? `${tierLabel} · renews ${new Date(a.proUntil!).toLocaleDateString()}` : `Usage: ${a.used}/${a.freeQuota} free`);
     } catch {
       /* keep the plain label */
     }

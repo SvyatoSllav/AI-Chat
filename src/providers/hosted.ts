@@ -9,123 +9,33 @@ export interface AccountInfo {
   pro: boolean;
   proUntil: string | null;
   checkoutUrl: string;
-}
-
-/** A short-lived GLM credential for Pro users: chat goes client → Z.ai
- *  directly, our backend only controls the subscription. */
-export interface Lease {
-  baseUrl: string;
-  apiKey: string;
-  model: string;
-  fastModel: string;
-  exp: number;
+  tier: "lite" | "pro" | null;
 }
 
 /**
- * Hosted subscription provider. Free tier is proxied through our control
- * plane (the key never reaches the client). Pro accounts fetch a lease and
- * talk to Z.ai directly — no chat traffic through our server.
+ * Hosted subscription provider. All chat traffic goes through the backend
+ * proxy — the Z.ai key never leaves the server. Free tier gets 5 messages;
+ * Lite and Pro get unlimited (different model tiers).
  */
 export class HostedProvider implements LLMProvider {
   id = "hosted";
   supportsMobile = true;
-
-  private lease: Lease | null = null;
-  private leaseDeniedAt = 0; // last 402 — don't re-ask for a few minutes
 
   constructor(
     private backendUrl: string,
     private token: string,
   ) {}
 
-  private async ensureLease(): Promise<Lease | null> {
-    if (this.lease && this.lease.exp > Date.now() + 60_000) return this.lease;
-    if (Date.now() - this.leaseDeniedAt < 5 * 60_000) return null;
-    try {
-      const res = await requestUrl({
-        url: this.backendUrl.replace(/\/+$/, "") + "/api/lease",
-        method: "GET",
-        headers: { Authorization: `Bearer ${this.token}` },
-        throw: false,
-      });
-      if (res.status === 200 && res.json?.apiKey) {
-        this.lease = res.json as Lease;
-        return this.lease;
-      }
-    } catch {
-      /* network — fall back to proxy */
-    }
-    this.leaseDeniedAt = Date.now();
-    return null;
-  }
-
-  private leaseModel(lease: Lease, tier?: string): string {
-    return tier === "fast" ? lease.fastModel : lease.model;
-  }
-
   async complete(req: CompletionRequest): Promise<CompletionResult> {
     if (!this.token) throw new Error("Sign in first: AI Chat settings → Account → Sign in in browser.");
-    const lease = await this.ensureLease();
-    if (lease) {
-      try {
-        return await completeWithTools(
-          lease.baseUrl + "/chat/completions",
-          { Authorization: `Bearer ${lease.apiKey}` },
-          this.leaseModel(lease, req.model),
-          req,
-        );
-      } catch (e) {
-        if (/Auth failed|401/.test(e instanceof Error ? e.message : "")) this.lease = null; // key rotated → re-lease / proxy
-        else throw e;
-      }
-    }
     const url = this.backendUrl.replace(/\/+$/, "") + "/api/chat";
-    return completeWithTools(
-      url,
-      { Authorization: `Bearer ${this.token}` },
-      req.model ?? "",
-      req,
-      { "X-ZK-Turn": req.firstOfTurn ? "new" : "continue" },
-    );
-  }
-
-  /** Direct Z.ai call (Pro lease). requestUrl → no CORS, but no streaming:
-   *  the full answer arrives in one delta. */
-  private async chatDirect(lease: Lease, req: ChatRequest, onDelta: (chunk: string) => void): Promise<string> {
-    const res = await requestUrl({
-      url: lease.baseUrl + "/chat/completions",
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${lease.apiKey}` },
-      body: JSON.stringify({ model: this.leaseModel(lease, req.model), messages: req.messages, stream: false }),
-      throw: false,
+    return completeWithTools(url, { Authorization: `Bearer ${this.token}` }, req.model ?? "", req, {
+      "X-ZK-Turn": req.firstOfTurn ? "new" : "continue",
     });
-    if (res.status === 401) {
-      this.lease = null;
-      throw new Error("lease-auth");
-    }
-    if (res.status >= 400) {
-      const detail = res.json?.error?.message ?? res.json?.error ?? "";
-      if (res.status === 429) throw new Error(detail || "GLM usage limit reached for this cycle — try Low effort or wait a bit.");
-      throw new Error(`Model HTTP ${res.status}: ${detail}`);
-    }
-    const full: string = res.json?.choices?.[0]?.message?.content ?? "";
-    if (full) onDelta(full);
-    return full;
   }
 
   async chat(req: ChatRequest, onDelta: (chunk: string) => void): Promise<string> {
-    if (!this.token) {
-      throw new Error("Sign in first: AI Chat settings → Account → Sign in in browser.");
-    }
-    const lease = await this.ensureLease();
-    if (lease) {
-      try {
-        return await this.chatDirect(lease, req, onDelta);
-      } catch (e) {
-        if (!(e instanceof Error && e.message === "lease-auth")) throw e;
-        /* key rotated → fall through to the proxy path */
-      }
-    }
+    if (!this.token) throw new Error("Sign in first: AI Chat settings → Account → Sign in in browser.");
     const url = this.backendUrl.replace(/\/+$/, "") + "/api/chat";
 
     const payload = JSON.stringify({ messages: req.messages, ...(req.model ? { model: req.model } : {}), stream: true });

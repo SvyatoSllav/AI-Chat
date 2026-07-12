@@ -3,6 +3,53 @@ import type { VaultIndex } from "../rag/indexer";
 import { ChatMessage, LLMProvider } from "../providers/types";
 import { TOOL_SPECS, WRITE_TOOLS, executeTool, previewTool, ToolResult } from "./tools";
 
+// ── Context-window compaction ─────────────────────────────────────────────────
+
+function estimateTokens(messages: ChatMessage[]): number {
+  return messages.reduce((sum, m) => {
+    const text = typeof m.content === "string" ? m.content : JSON.stringify(m.content ?? "");
+    const calls = m.tool_calls ? JSON.stringify(m.tool_calls) : "";
+    return sum + Math.ceil((text.length + calls.length) / 4) + 4;
+  }, 0);
+}
+
+function contextWindowFor(model: string | undefined): number {
+  if (!model) return 32_000;
+  const m = model.toLowerCase();
+  if (m.includes("claude")) return 200_000;
+  if (m.includes("glm") || m === "smart" || m === "fast") return 128_000;
+  if (m.includes("gpt-4")) return 128_000;
+  if (m.includes("gpt-3.5")) return 16_000;
+  if (m.includes("qwen2.5") || m.includes("qwen3")) return 128_000;
+  if (m.includes("qwen")) return 32_000;
+  if (m.includes("llama")) return 8_000;
+  return 32_000; // conservative default for unknown models
+}
+
+/**
+ * If the accumulated messages are approaching the context limit, drop the
+ * oldest tool-call rounds, keeping the system prompt + most recent exchanges.
+ * No network call — just a local trim with a breadcrumb note.
+ */
+function compactIfNeeded(messages: ChatMessage[], model: string | undefined): ChatMessage[] {
+  const limit = contextWindowFor(model);
+  if (estimateTokens(messages) < limit * 0.80) return messages;
+
+  const systemMsg = messages.find((m) => m.role === "system");
+  const rest = messages.filter((m) => m.role !== "system");
+  const KEEP = 12; // last 6 tool call + result pairs
+  if (rest.length <= KEEP + 2) return messages; // nothing worth trimming
+
+  const trimmed = rest.slice(-KEEP);
+  const dropped = rest.length - trimmed.length;
+  console.log(`[AI Chat] compacted: dropped ${dropped} old messages (ctx limit ${limit})`);
+  return [
+    ...(systemMsg ? [systemMsg] : []),
+    { role: "system", content: `[${dropped} earlier messages dropped — context window limit. Continuing from recent context.]` },
+    ...trimmed,
+  ];
+}
+
 export const AGENT_SYSTEM_PROMPT = [
   "You are AI Chat, a thorough research agent living inside the user's Obsidian vault.",
   "You can search, read, create, edit, append to, and delete notes using the provided tools.",
@@ -84,6 +131,7 @@ export async function runAgent(
   for (let step = 0; step < opts.maxSteps; step++) {
     if (opts.signal?.aborted) throw new DOMException("Aborted", "AbortError");
 
+    messages = compactIfNeeded(messages, opts.model);
     const res = await provider.complete({ messages, tools: TOOL_SPECS, signal: opts.signal, firstOfTurn: step === 0, model: opts.model });
     if (res.text) {
       finalText = res.text;

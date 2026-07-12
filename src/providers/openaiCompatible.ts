@@ -104,7 +104,7 @@ export class OpenAICompatibleProvider implements LLMProvider {
 }
 
 function friendlyHttpHint(status: number): string {
-  if (status === 401) return "API key is missing or invalid — check it in ZettelkastenAI settings. ";
+  if (status === 401) return "API key is missing or invalid — check it in AI Chat settings. ";
   if (status === 429) return "Rate limit or quota exceeded — check billing/limits at your provider. ";
   return "";
 }

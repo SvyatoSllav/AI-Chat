@@ -1,9 +1,9 @@
 {
-  "id": "zettelkasten-ai",
-  "name": "ZettelkastenAI",
+  "id": "ai-chat",
+  "name": "AI Chat",
   "version": "0.2.0",
   "minAppVersion": "1.5.0",
-  "description": "Chat with your vault. Retrieval-augmented answers with [[wikilink]] citations. Bring your own key or use the built-in subscription.",
+  "description": "Chat with your Obsidian vault. Agentic vault assistant with RAG retrieval, [[wikilink]] citations, and tool use. Bring your own model or subscribe.",
   "author": "Svyatoslav",
   "authorUrl": "https://zettelkasten-ai.com",
   "isDesktopOnly": false

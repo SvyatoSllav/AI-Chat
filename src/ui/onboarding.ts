@@ -1,5 +1,5 @@
 import { App, Modal, Platform } from "obsidian";
-import type ZettelkastenAIPlugin from "../main";
+import type AIChatPlugin from "../main";
 import type { ProviderId } from "../settings";
 
 /**
@@ -7,7 +7,7 @@ import type { ProviderId } from "../settings";
  * The same choice stays available in Settings → AI provider.
  */
 export class OnboardingModal extends Modal {
-  constructor(app: App, private plugin: ZettelkastenAIPlugin) {
+  constructor(app: App, private plugin: AIChatPlugin) {
     super(app);
   }
 
@@ -15,7 +15,7 @@ export class OnboardingModal extends Modal {
     const { contentEl } = this;
     contentEl.addClass("zk-onboarding");
 
-    contentEl.createEl("h2", { text: "Welcome to ZettelkastenAI" });
+    contentEl.createEl("h2", { text: "Welcome to AI Chat" });
     contentEl.createEl("p", {
       cls: "zk-onboard-sub",
       text: "Chat with your vault, let the agent organize your notes. First, pick how the AI runs — you can change this any time in the plugin settings.",
@@ -23,7 +23,7 @@ export class OnboardingModal extends Modal {
 
     this.card(
       "hosted",
-      "ZettelkastenAI subscription",
+      "AI Chat subscription",
       "Recommended",
       [
         "No API keys — one-click sign-in in your browser, 5 free messages to try",

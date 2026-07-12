@@ -1,10 +1,10 @@
-import type { ZettelkastenAISettings } from "../settings";
+import type { AIChatSettings } from "../settings";
 import { LLMProvider } from "./types";
 import { OpenAICompatibleProvider } from "./openaiCompatible";
 import { ClaudeCodeProvider } from "./claudeCode";
 import { HostedProvider } from "./hosted";
 
-export function createProvider(s: ZettelkastenAISettings): LLMProvider {
+export function createProvider(s: AIChatSettings): LLMProvider {
   switch (s.provider) {
     case "claude-code":
       return new ClaudeCodeProvider(s.claudeCodePath, s.claudeCodeProxy);

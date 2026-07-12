@@ -64,7 +64,7 @@ export class HostedProvider implements LLMProvider {
   }
 
   async complete(req: CompletionRequest): Promise<CompletionResult> {
-    if (!this.token) throw new Error("Sign in first: ZettelkastenAI settings → Account → Sign in in browser.");
+    if (!this.token) throw new Error("Sign in first: AI Chat settings → Account → Sign in in browser.");
     const lease = await this.ensureLease();
     if (lease) {
       try {
@@ -115,7 +115,7 @@ export class HostedProvider implements LLMProvider {
 
   async chat(req: ChatRequest, onDelta: (chunk: string) => void): Promise<string> {
     if (!this.token) {
-      throw new Error("Sign in first: ZettelkastenAI settings → Account → Sign in in browser.");
+      throw new Error("Sign in first: AI Chat settings → Account → Sign in in browser.");
     }
     const lease = await this.ensureLease();
     if (lease) {
@@ -221,10 +221,10 @@ async function describeError(status: number, readBody: () => Promise<string> | s
   } catch {
     /* non-JSON body */
   }
-  if (status === 401) return new ChatError("Session expired — sign in again in ZettelkastenAI settings.");
+  if (status === 401) return new ChatError("Session expired — sign in again in AI Chat settings.");
   if (status === 402) return new ChatError(detail?.replace(/\.?\s*Subscribe:.*$/i, "") || "Free messages used up.", checkoutUrl);
   if (status === 503) return new ChatError(detail || "Hosted model is temporarily unavailable.");
-  return new ChatError(`ZettelkastenAI backend HTTP ${status}: ${detail}`);
+  return new ChatError(`AI Chat backend HTTP ${status}: ${detail}`);
 }
 
 // ---------- account API used by the settings tab ----------

@@ -58,7 +58,7 @@ export class VaultIndex {
       this.chunksByPath.set(file.path, chunks);
       this.mini.addAll(chunks);
     } catch (e) {
-      console.warn(`ZettelkastenAI: failed to index ${file.path}`, e);
+      console.warn(`AI Chat: failed to index ${file.path}`, e);
     }
   }
 

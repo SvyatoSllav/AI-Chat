@@ -1,6 +1,6 @@
 /* ============ ZettelkastenAI chat — dense Material-dark sidebar ============ */
 
-.zettelkasten-ai {
+.ai-chat {
   display: flex;
   flex-direction: column;
   height: 100%;
@@ -13,8 +13,8 @@
 
 /* Two self-contained themes, independent of Obsidian's.
    Dark doubles as the fallback in case no theme class is applied. */
-.zettelkasten-ai,
-.zettelkasten-ai.zk-dark {
+.ai-chat,
+.ai-chat.zk-dark {
   --zkc-bg: #131313;
   --zkc-lowest: #0e0e0e;
   --zkc-low: #1b1b1c;
@@ -33,7 +33,7 @@
   --zkc-green: #3cddc7;
   --zkc-red: #ffb4ab;
 }
-.zettelkasten-ai.zk-light {
+.ai-chat.zk-light {
   --zkc-bg: #ffffff;
   --zkc-lowest: #f7f6f9;
   --zkc-low: #f1eff4;
@@ -57,14 +57,14 @@
    (markdown-rendered text, code, links, icons, details) follow the CHAT theme.
    Without this, chat-dark + Obsidian-light rendered dark text on dark panels
    (and vice versa) — the "broken theme" failure mode. */
-.zettelkasten-ai.zk-dark {
+.ai-chat.zk-dark {
   color-scheme: dark;
 }
-.zettelkasten-ai.zk-light {
+.ai-chat.zk-light {
   color-scheme: light;
 }
-.zettelkasten-ai.zk-dark,
-.zettelkasten-ai.zk-light {
+.ai-chat.zk-dark,
+.ai-chat.zk-light {
   --background-primary: var(--zkc-bg);
   --background-primary-alt: var(--zkc-low);
   --background-secondary: var(--zkc-lowest);
@@ -101,32 +101,32 @@
   color: var(--zkc-text);
 }
 
-.zettelkasten-ai textarea,
-.zettelkasten-ai select,
-.zettelkasten-ai button {
+.ai-chat textarea,
+.ai-chat select,
+.ai-chat button {
   font-family: inherit;
 }
 
 /* Obsidian disables text selection outside the editor — re-enable in chat. */
-.zettelkasten-ai .vm-messages,
-.zettelkasten-ai .vm-messages * {
+.ai-chat .vm-messages,
+.ai-chat .vm-messages * {
   user-select: text;
   -webkit-user-select: text;
 }
 
 /* thin scrollbar for the dense layout */
-.zettelkasten-ai ::-webkit-scrollbar {
+.ai-chat ::-webkit-scrollbar {
   width: 4px;
   height: 4px;
 }
-.zettelkasten-ai ::-webkit-scrollbar-track {
+.ai-chat ::-webkit-scrollbar-track {
   background: transparent;
 }
-.zettelkasten-ai ::-webkit-scrollbar-thumb {
+.ai-chat ::-webkit-scrollbar-thumb {
   background: var(--zkc-highest);
   border-radius: 2px;
 }
-.zettelkasten-ai ::-webkit-scrollbar-thumb:hover {
+.ai-chat ::-webkit-scrollbar-thumb:hover {
   background: var(--zkc-border);
 }
 
@@ -152,7 +152,7 @@
   align-items: center;
   gap: 2px;
 }
-.zettelkasten-ai .zk-icon-btn {
+.ai-chat .zk-icon-btn {
   width: 26px;
   height: 26px;
   display: flex;
@@ -164,11 +164,11 @@
   border-radius: 4px;
   padding: 0;
 }
-.zettelkasten-ai .zk-icon-btn:hover {
+.ai-chat .zk-icon-btn:hover {
   color: var(--zkc-text);
   background: var(--zkc-highest);
 }
-.zettelkasten-ai .zk-icon-btn svg {
+.ai-chat .zk-icon-btn svg {
   width: 16px;
   height: 16px;
 }
@@ -316,7 +316,7 @@
   width: 100%;
   text-align: left;
 }
-.zettelkasten-ai .zk-qa-card {
+.ai-chat .zk-qa-card {
   display: flex;
   align-items: center;
   justify-content: flex-start; /* override Obsidian's button justify-content:center */
@@ -351,10 +351,10 @@
   opacity: 0;
   transition: opacity 0.15s;
 }
-.zettelkasten-ai .zk-qa-card:hover {
+.ai-chat .zk-qa-card:hover {
   background: var(--zkc-high);
 }
-.zettelkasten-ai .zk-qa-card:hover::before {
+.ai-chat .zk-qa-card:hover::before {
   opacity: 1;
 }
 .zk-qa-icon {
@@ -661,7 +661,7 @@
   padding: 0 8px 8px;
 }
 .zk-toolbar-spacer { flex: 1 1 auto; }
-.zettelkasten-ai .zk-select {
+.ai-chat .zk-select {
   background: transparent;
   border: none;
   box-shadow: none;
@@ -673,8 +673,8 @@
   max-width: 120px;
   height: auto;
 }
-.zettelkasten-ai .zk-select:hover { color: var(--zkc-text); }
-.zettelkasten-ai .zk-select option {
+.ai-chat .zk-select:hover { color: var(--zkc-text); }
+.ai-chat .zk-select option {
   background: var(--zkc-high);
   color: var(--zkc-text);
 }

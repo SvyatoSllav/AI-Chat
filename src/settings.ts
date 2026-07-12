@@ -1,5 +1,5 @@
 import { App, Notice, Platform, PluginSettingTab, Setting } from "obsidian";
-import type ZettelkastenAIPlugin from "./main";
+import type AIChatPlugin from "./main";
 import { deviceStart, devicePoll, fetchAccount } from "./providers/hosted";
 
 export type ProviderId = "hosted" | "claude-code" | "openai-compatible";
@@ -12,7 +12,7 @@ export interface ChatSession {
   messages: import("./providers/types").ChatMessage[];
 }
 
-export interface ZettelkastenAISettings {
+export interface AIChatSettings {
   onboarded: boolean;
   provider: ProviderId;
   backendUrl: string;
@@ -38,7 +38,7 @@ export interface ZettelkastenAISettings {
 
 // Default is the hosted subscription (GLM): sign in with email, 5 messages
 // free, then paid. BYOK and Claude Code CLI stay available — see PLAN.md §3, §6.
-export const DEFAULT_SETTINGS: ZettelkastenAISettings = {
+export const DEFAULT_SETTINGS: AIChatSettings = {
   onboarded: false,
   provider: "hosted",
   backendUrl: "https://zettelkasten-ai.com",
@@ -62,11 +62,11 @@ export const DEFAULT_SETTINGS: ZettelkastenAISettings = {
   activeSessionId: null,
 };
 
-export class ZettelkastenAISettingTab extends PluginSettingTab {
+export class AIChatSettingTab extends PluginSettingTab {
   /** Cancels the browser sign-in poll when the tab closes or re-renders. */
   private pollAbort = { cancelled: false };
 
-  constructor(app: App, private plugin: ZettelkastenAIPlugin) {
+  constructor(app: App, private plugin: AIChatPlugin) {
     super(app, plugin);
   }
 
@@ -84,9 +84,9 @@ export class ZettelkastenAISettingTab extends PluginSettingTab {
 
     new Setting(containerEl)
       .setName("AI provider")
-      .setDesc("ZettelkastenAI subscription (no API keys, 5 free messages), your Claude Code CLI, or a self-hosted / own-key endpoint.")
+      .setDesc("AI Chat subscription (no API keys, 5 free messages), your Claude Code CLI, or a self-hosted / own-key endpoint.")
       .addDropdown((d) => {
-        d.addOption("hosted", "ZettelkastenAI subscription (no keys)");
+        d.addOption("hosted", "AI Chat subscription (no keys)");
         if (Platform.isDesktopApp) d.addOption("claude-code", "Claude Code CLI (your Claude account)");
         d.addOption("openai-compatible", "Self-hosted / your own key (OpenAI-compatible)");
         d.setValue(s.provider).onChange(async (v) => {

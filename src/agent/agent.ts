@@ -4,7 +4,7 @@ import { ChatMessage, LLMProvider } from "../providers/types";
 import { TOOL_SPECS, WRITE_TOOLS, executeTool, previewTool, ToolResult } from "./tools";
 
 export const AGENT_SYSTEM_PROMPT = [
-  "You are ZettelkastenAI, a thorough research agent living inside the user's Obsidian vault.",
+  "You are AI Chat, a thorough research agent living inside the user's Obsidian vault.",
   "You can search, read, create, edit, append to, and delete notes using the provided tools.",
 
   // ── RESEARCH BEFORE ANSWER ────────────────────────────────────────────────

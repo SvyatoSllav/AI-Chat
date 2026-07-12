@@ -1,5 +1,5 @@
 import { ItemView, MarkdownRenderer, Notice, WorkspaceLeaf, setIcon } from "obsidian";
-import type ZettelkastenAIPlugin from "../main";
+import type AIChatPlugin from "../main";
 import { ChatMessage } from "../providers/types";
 import { ChatSession } from "../settings";
 import { runAgent, agentSystemPrompt, AgentStep } from "../agent/agent";
@@ -13,7 +13,7 @@ const MODEL_OPTIONS: { value: ModelChoice; label: string }[] = [
   ...LITE_MODELS.map((m) => ({ value: m.id, label: m.label })),
 ];
 
-export const VIEW_TYPE_CHAT = "zettelkasten-ai-chat";
+export const VIEW_TYPE_CHAT = "ai-chat";
 
 // lucide icon per agent tool
 const TOOL_ICONS: Record<string, string> = {
@@ -53,7 +53,7 @@ export class ChatView extends ItemView {
   private sessionsBtnEl?: HTMLButtonElement;
   private sessionsDropEl?: HTMLElement;
 
-  constructor(leaf: WorkspaceLeaf, private plugin: ZettelkastenAIPlugin) {
+  constructor(leaf: WorkspaceLeaf, private plugin: AIChatPlugin) {
     super(leaf);
   }
 
@@ -61,21 +61,21 @@ export class ChatView extends ItemView {
     return VIEW_TYPE_CHAT;
   }
   getDisplayText() {
-    return "ZettelkastenAI";
+    return "AI Chat";
   }
   getIcon() {
-    return "zettelkasten-ai";
+    return "ai-chat";
   }
 
   async onOpen() {
     const root = this.contentEl;
     root.empty();
-    root.addClass("zettelkasten-ai");
+    root.addClass("ai-chat");
     this.applyTheme();
 
     // ---- top bar ----
     this.headerEl = root.createDiv({ cls: "zk-tabbar" });
-    this.headerEl.createDiv({ cls: "zk-title", text: "ZettelkastenAI" });
+    this.headerEl.createDiv({ cls: "zk-title", text: "AI Chat" });
 
     const actions = this.headerEl.createDiv({ cls: "zk-actions" });
     const themeBtn = actions.createEl("button", { cls: "clickable-icon zk-icon-btn" });
@@ -203,7 +203,7 @@ export class ChatView extends ItemView {
       left.setText(s.model || "Custom endpoint");
       return;
     }
-    left.setText("ZettelkastenAI");
+    left.setText("AI Chat");
     if (!s.authToken) return;
     try {
       const a = await fetchAccount(s.backendUrl, s.authToken);
@@ -335,7 +335,7 @@ export class ChatView extends ItemView {
     if (this.msgsEl.childElementCount) return;
     const w = this.msgsEl.createDiv({ cls: "zk-welcome" });
     const badge = w.createDiv({ cls: "zk-welcome-badge" });
-    setIcon(badge, "zettelkasten-ai");
+    setIcon(badge, "ai-chat");
     w.createDiv({ cls: "zk-welcome-title", text: "How can I help in your vault?" });
     w.createDiv({
       cls: "zk-welcome-sub",
@@ -838,7 +838,7 @@ export class ChatView extends ItemView {
     }
 
     const system = [
-      "You are ZettelkastenAI, an assistant living inside the user's Obsidian vault.",
+      "You are AI Chat, an assistant living inside the user's Obsidian vault.",
       context
         ? "Answer ONLY from the provided vault excerpts. Cite sources inline as [[wikilinks]]. If the excerpts do not contain the answer, say so plainly."
         : "Answer helpfully and concisely.",
@@ -880,8 +880,8 @@ export class ChatView extends ItemView {
   private roleHeader(parent: HTMLElement, role: "user" | "assistant") {
     const h = parent.createDiv({ cls: "zk-msghead" });
     const ic = h.createSpan({ cls: "zk-msghead-icon" });
-    setIcon(ic, role === "user" ? "user" : "zettelkasten-ai");
-    h.createSpan({ cls: "zk-msghead-name", text: role === "user" ? "You" : "ZettelkastenAI" });
+    setIcon(ic, role === "user" ? "user" : "ai-chat");
+    h.createSpan({ cls: "zk-msghead-name", text: role === "user" ? "You" : "AI Chat" });
   }
 
   /** Error as an assistant message, with a short "Subscribe" link when the

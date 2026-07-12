@@ -13,40 +13,125 @@ function estimateTokens(messages: ChatMessage[]): number {
   }, 0);
 }
 
+// Actual context windows per model (verified from OpenRouter / Z.ai docs, July 2026)
+const CTX_WINDOWS: Record<string, number> = {
+  "glm-5.2":      1_048_576, // 1M
+  "glm-4.7":        202_752,
+  "glm-4.6":        202_752,
+  "glm-4.5-air":    131_072,
+  "glm-5-turbo":    131_072,
+  // aliases the backend sends
+  "smart":          202_752, // maps to glm-4.6
+  "fast":           131_072, // maps to glm-4.5-air
+  // other providers
+  "claude-3":       200_000,
+  "claude-sonnet":  200_000,
+  "claude-opus":    200_000,
+  "claude-haiku":   200_000,
+  "gpt-4o":         128_000,
+  "gpt-4-turbo":    128_000,
+  "gpt-4":            8_192,
+  "gpt-3.5":         16_385,
+  "qwen2.5":        131_072,
+  "qwen3":          131_072,
+  "qwen":            32_000,
+  "llama-3":        128_000,
+  "llama":            8_000,
+};
+
 function contextWindowFor(model: string | undefined): number {
   if (!model) return 32_000;
   const m = model.toLowerCase();
-  if (m.includes("claude")) return 200_000;
-  if (m.includes("glm") || m === "smart" || m === "fast") return 128_000;
-  if (m.includes("gpt-4")) return 128_000;
-  if (m.includes("gpt-3.5")) return 16_000;
-  if (m.includes("qwen2.5") || m.includes("qwen3")) return 128_000;
-  if (m.includes("qwen")) return 32_000;
-  if (m.includes("llama")) return 8_000;
+  for (const [key, size] of Object.entries(CTX_WINDOWS)) {
+    if (m.includes(key)) return size;
+  }
   return 32_000; // conservative default for unknown models
 }
 
 /**
- * If the accumulated messages are approaching the context limit, drop the
- * oldest tool-call rounds, keeping the system prompt + most recent exchanges.
- * No network call — just a local trim with a breadcrumb note.
+ * If the accumulated messages are approaching the context limit, summarise the
+ * older portion using the model and replace it with a compact summary — the
+ * same strategy Claude Code uses for /compact.
+ *
+ * Falls back to a simple drop with a note if the summary call fails.
  */
-function compactIfNeeded(messages: ChatMessage[], model: string | undefined): ChatMessage[] {
+async function compactMessages(
+  messages: ChatMessage[],
+  model: string | undefined,
+  provider: LLMProvider,
+  signal?: AbortSignal,
+): Promise<ChatMessage[]> {
   const limit = contextWindowFor(model);
   if (estimateTokens(messages) < limit * 0.80) return messages;
 
   const systemMsg = messages.find((m) => m.role === "system");
   const rest = messages.filter((m) => m.role !== "system");
-  const KEEP = 12; // last 6 tool call + result pairs
-  if (rest.length <= KEEP + 2) return messages; // nothing worth trimming
+  const KEEP = 10; // keep last 10 non-system messages verbatim
+  if (rest.length <= KEEP + 2) return messages;
 
-  const trimmed = rest.slice(-KEEP);
-  const dropped = rest.length - trimmed.length;
-  console.log(`[AI Chat] compacted: dropped ${dropped} old messages (ctx limit ${limit})`);
+  const toSummarize = rest.slice(0, rest.length - KEEP);
+  const recent = rest.slice(rest.length - KEEP);
+
+  // Build a readable digest — truncate large tool results so the summary
+  // request itself doesn't hit the context limit.
+  const historyText = toSummarize
+    .map((m) => {
+      if (m.role === "assistant" && m.tool_calls?.length) {
+        const calls = m.tool_calls.map((tc) => `${tc.function.name}(${tc.function.arguments.slice(0, 120)})`).join(", ");
+        return `ASSISTANT → tools: ${calls}`;
+      }
+      if (m.role === "tool") {
+        const body = (m.content ?? "").slice(0, 800);
+        return `TOOL RESULT (${m.name ?? "tool"}): ${body}${(m.content?.length ?? 0) > 800 ? " …[truncated]" : ""}`;
+      }
+      const body = (typeof m.content === "string" ? m.content : "").slice(0, 600);
+      return `${m.role.toUpperCase()}: ${body}`;
+    })
+    .join("\n\n");
+
+  // Prompt mirrors Claude Code's compact strategy: thorough but focused on
+  // what matters for resuming an agentic vault task.
+  const summaryPrompt: ChatMessage[] = [
+    {
+      role: "user",
+      content:
+        "Your task is to create a detailed summary of the following conversation between a user and an AI agent working inside an Obsidian vault. " +
+        "This summary will replace the older context so the agent can continue without losing important information.\n\n" +
+        "Capture precisely:\n" +
+        "1. The user's original request\n" +
+        "2. Which notes were searched and found (exact titles)\n" +
+        "3. Key facts discovered from reading notes\n" +
+        "4. Any notes created or edited, and what changed\n" +
+        "5. What is still pending or needs to be done\n\n" +
+        "Conversation to summarise:\n\n" + historyText +
+        "\n\nWrite a concise but complete summary (4–8 sentences). Be specific about note titles and facts.",
+    },
+  ];
+
+  let summary = "";
+  try {
+    summary = await provider.chat({ messages: summaryPrompt, signal }, () => {});
+  } catch {
+    // Summary failed — fall back to a simple trim with a breadcrumb note.
+    console.warn("[AI Chat] compaction summary call failed, falling back to trim");
+    return [
+      ...(systemMsg ? [systemMsg] : []),
+      { role: "system" as const, content: `[${toSummarize.length} earlier messages trimmed — context window limit. Summary unavailable.]` },
+      ...recent,
+    ];
+  }
+
+  console.log(`[AI Chat] compacted ${toSummarize.length} msgs → summary (ctx limit ${limit})`);
   return [
     ...(systemMsg ? [systemMsg] : []),
-    { role: "system", content: `[${dropped} earlier messages dropped — context window limit. Continuing from recent context.]` },
-    ...trimmed,
+    {
+      role: "system" as const,
+      content:
+        "This conversation is being continued from earlier context that exceeded the context window. " +
+        "The following summary covers what happened before:\n\n" +
+        summary,
+    },
+    ...recent,
   ];
 }
 
@@ -131,7 +216,7 @@ export async function runAgent(
   for (let step = 0; step < opts.maxSteps; step++) {
     if (opts.signal?.aborted) throw new DOMException("Aborted", "AbortError");
 
-    messages = compactIfNeeded(messages, opts.model);
+    messages = await compactMessages(messages, opts.model, provider, opts.signal);
     const res = await provider.complete({ messages, tools: TOOL_SPECS, signal: opts.signal, firstOfTurn: step === 0, model: opts.model });
     if (res.text) {
       finalText = res.text;

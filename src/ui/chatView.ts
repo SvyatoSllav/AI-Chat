@@ -1,6 +1,7 @@
 import { ItemView, MarkdownRenderer, Notice, WorkspaceLeaf, setIcon } from "obsidian";
 import type ZettelkastenAIPlugin from "../main";
 import { ChatMessage } from "../providers/types";
+import { ChatSession } from "../settings";
 import { runAgent, agentSystemPrompt, AgentStep } from "../agent/agent";
 import { ToolResult } from "../agent/tools";
 import { EFFORTS, EFFORT_ORDER, EffortId } from "../agent/effort";
@@ -49,6 +50,8 @@ export class ChatView extends ItemView {
   private paletteVisible = false;
   private paletteIndex = 0;
   private paletteItems: { el: HTMLElement; run: () => void }[] = [];
+  private sessionsBtnEl?: HTMLButtonElement;
+  private sessionsDropEl?: HTMLElement;
 
   constructor(leaf: WorkspaceLeaf, private plugin: ZettelkastenAIPlugin) {
     super(leaf);
@@ -98,9 +101,17 @@ export class ChatView extends ItemView {
     setIcon(settingsBtn, "settings");
     settingsBtn.addEventListener("click", () => this.openSettings());
 
+    // sessions button
+    this.sessionsBtnEl = actions.createEl("button", { cls: "clickable-icon zk-icon-btn", attr: { "aria-label": "Chat history" } });
+    setIcon(this.sessionsBtnEl, "history");
+    this.sessionsDropEl = actions.createDiv({ cls: "zk-sessions-drop" });
+    this.sessionsDropEl.hide();
+    this.sessionsBtnEl.addEventListener("click", (e) => { e.stopPropagation(); this.toggleSessionsDrop(); });
+    document.addEventListener("click", () => this.sessionsDropEl?.hide(), { capture: true });
+
     const newChat = actions.createEl("button", { cls: "clickable-icon zk-icon-btn", attr: { "aria-label": "New chat" } });
     setIcon(newChat, "plus");
-    newChat.addEventListener("click", () => this.resetConversation());
+    newChat.addEventListener("click", () => this.newSession());
 
     // ---- messages ----
     this.msgsEl = root.createDiv({ cls: "vm-messages" });
@@ -149,7 +160,20 @@ export class ChatView extends ItemView {
     // ---- footer ----
     void this.buildFooter(root);
 
-    this.renderWelcome();
+    // Restore active session if one exists
+    const activeSess = this.plugin.settings.sessions.find((s) => s.id === this.plugin.settings.activeSessionId);
+    if (activeSess?.messages.length) {
+      this.history = [...activeSess.messages];
+      for (const msg of this.history) {
+        if (msg.role === "user") this.renderMsg("user", typeof msg.content === "string" ? msg.content : "");
+        else if (msg.role === "assistant" && msg.content) {
+          const { body } = this.renderAssistantBlock(false);
+          void this.renderMarkdown(typeof msg.content === "string" ? msg.content : "", body);
+        }
+      }
+    } else {
+      this.renderWelcome();
+    }
   }
 
   private applyTheme() {
@@ -337,12 +361,120 @@ export class ChatView extends ItemView {
     void this.send();
   }
 
-  private resetConversation() {
+  // ---------- session management ----------
+
+  private sessionId(): string {
+    return this.plugin.settings.activeSessionId ?? "";
+  }
+
+  private saveCurrentSession() {
+    if (!this.history.length) return;
+    const s = this.plugin.settings;
+    let session = s.sessions.find((x) => x.id === this.sessionId());
+    if (!session) {
+      session = { id: this.sessionId() || crypto.randomUUID(), name: this.autoSessionName(), createdAt: Date.now(), updatedAt: Date.now(), messages: [] };
+      s.sessions.unshift(session);
+      s.activeSessionId = session.id;
+    }
+    session.messages = [...this.history];
+    session.updatedAt = Date.now();
+    // Keep max 50 sessions
+    if (s.sessions.length > 50) s.sessions = s.sessions.slice(0, 50);
+    void this.plugin.saveSettings();
+  }
+
+  private autoSessionName(): string {
+    const first = this.history.find((m) => m.role === "user")?.content ?? "";
+    const text = typeof first === "string" ? first : "";
+    return text.slice(0, 40).trim() || `Chat ${new Date().toLocaleDateString()}`;
+  }
+
+  private newSession() {
     if (this.running) this.stop();
+    this.saveCurrentSession();
+    this.plugin.settings.activeSessionId = crypto.randomUUID();
+    void this.plugin.saveSettings();
     this.history = [];
     this.msgsEl.empty();
     this.renderWelcome();
     this.inputEl.focus();
+  }
+
+  private loadSession(session: ChatSession) {
+    if (this.running) this.stop();
+    this.saveCurrentSession();
+    this.plugin.settings.activeSessionId = session.id;
+    void this.plugin.saveSettings();
+    this.history = [...session.messages];
+    this.msgsEl.empty();
+    if (!this.history.length) { this.renderWelcome(); return; }
+    for (const msg of this.history) {
+      if (msg.role === "user") this.renderMsg("user", typeof msg.content === "string" ? msg.content : "");
+      else if (msg.role === "assistant" && msg.content) {
+        const { body } = this.renderAssistantBlock(false);
+        void this.renderMarkdown(typeof msg.content === "string" ? msg.content : "", body);
+      }
+    }
+    this.inputEl.focus();
+    this.sessionsDropEl?.hide();
+  }
+
+  private deleteSession(id: string) {
+    const s = this.plugin.settings;
+    s.sessions = s.sessions.filter((x) => x.id !== id);
+    if (s.activeSessionId === id) {
+      s.activeSessionId = s.sessions[0]?.id ?? null;
+      if (s.activeSessionId) {
+        const sess = s.sessions[0];
+        this.history = [...sess.messages];
+        this.msgsEl.empty();
+        for (const msg of this.history) {
+          if (msg.role === "user") this.renderMsg("user", typeof msg.content === "string" ? msg.content : "");
+          else if (msg.role === "assistant" && msg.content) {
+            const { body } = this.renderAssistantBlock(false);
+            void this.renderMarkdown(typeof msg.content === "string" ? msg.content : "", body);
+          }
+        }
+      } else {
+        this.history = [];
+        this.msgsEl.empty();
+        this.renderWelcome();
+      }
+    }
+    void this.plugin.saveSettings();
+    this.renderSessionsDrop();
+  }
+
+  private toggleSessionsDrop() {
+    if (!this.sessionsDropEl) return;
+    if (this.sessionsDropEl.isShown()) { this.sessionsDropEl.hide(); return; }
+    this.renderSessionsDrop();
+    this.sessionsDropEl.show();
+  }
+
+  private renderSessionsDrop() {
+    const drop = this.sessionsDropEl;
+    if (!drop) return;
+    drop.empty();
+    const sessions = this.plugin.settings.sessions;
+    if (!sessions.length) {
+      drop.createDiv({ cls: "zk-sessions-empty", text: "No saved sessions" });
+      return;
+    }
+    for (const sess of sessions) {
+      const item = drop.createDiv({ cls: "zk-session-item" + (sess.id === this.sessionId() ? " is-active" : "") });
+      const meta = item.createDiv({ cls: "zk-session-meta" });
+      meta.createDiv({ cls: "zk-session-name", text: sess.name });
+      meta.createDiv({ cls: "zk-session-date", text: new Date(sess.updatedAt).toLocaleDateString() });
+      item.addEventListener("click", (e) => { e.stopPropagation(); this.loadSession(sess); });
+      const del = item.createEl("button", { cls: "zk-session-del clickable-icon", attr: { "aria-label": "Delete" } });
+      setIcon(del, "trash-2");
+      del.addEventListener("click", (e) => { e.stopPropagation(); this.deleteSession(sess.id); });
+    }
+  }
+
+  private resetConversation() {
+    this.newSession();
   }
 
   private autosize() {
@@ -594,6 +726,7 @@ export class ChatView extends ItemView {
       thinking.remove();
       if (finalBlock) this.addCopyButton(finalBlock, finalText);
       this.history.push({ role: "user", content: q }, { role: "assistant", content: finalText });
+      this.saveCurrentSession();
     } catch (e) {
       thinking.remove();
       const msg = e instanceof Error ? e.message : String(e);
@@ -733,6 +866,7 @@ export class ChatView extends ItemView {
       await this.renderMarkdown(md, body);
       this.addCopyButton(block, full);
       this.history.push({ role: "user", content: q }, { role: "assistant", content: full });
+      this.saveCurrentSession();
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       const checkoutUrl = (e as any)?.checkoutUrl;

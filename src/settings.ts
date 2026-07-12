@@ -4,6 +4,14 @@ import { deviceStart, devicePoll, fetchAccount } from "./providers/hosted";
 
 export type ProviderId = "hosted" | "claude-code" | "openai-compatible";
 
+export interface ChatSession {
+  id: string;
+  name: string;
+  createdAt: number;
+  updatedAt: number;
+  messages: import("./providers/types").ChatMessage[];
+}
+
 export interface ZettelkastenAISettings {
   onboarded: boolean;
   provider: ProviderId;
@@ -24,6 +32,8 @@ export interface ZettelkastenAISettings {
   maxSteps: number;
   effort: import("./agent/effort").EffortId;
   modelChoice: import("./agent/modelRouter").ModelChoice;
+  sessions: ChatSession[];
+  activeSessionId: string | null;
 }
 
 // Default is the hosted subscription (GLM): sign in with email, 5 messages
@@ -48,6 +58,8 @@ export const DEFAULT_SETTINGS: ZettelkastenAISettings = {
   maxSteps: 12,
   effort: "medium",
   modelChoice: "auto",
+  sessions: [],
+  activeSessionId: null,
 };
 
 export class ZettelkastenAISettingTab extends PluginSettingTab {

@@ -46,15 +46,18 @@ export const EFFORTS: Record<EffortId, EffortProfile> = {
   ultra: {
     id: "ultra",
     label: "Ultra",
-    hint: "Research mode — plans, explores broadly, cross-checks",
+    hint: "Research mode — plans, explores broadly, reads deeply, cross-checks",
     topK: 20,
     maxSteps: 30,
     modelTier: "smart",
     directive: [
-      "Research mode. Start by writing a brief plan of what you will look for.",
-      "Explore broadly: run several searches with different phrasings and synonyms, follow [[wikilinks]] and backlinks you encounter, and read all plausibly relevant notes.",
-      "Cross-check claims across notes and point out contradictions.",
-      "Only then act or answer — comprehensively, with citations to every note you used.",
+      "ULTRA / RESEARCH MODE — Follow these steps strictly:",
+      "1. PLAN: Before any tool call, write a one-paragraph internal plan listing what you will search for and which notes you expect to read.",
+      "2. DISCOVER: Run at least 3 searches with different phrasings/synonyms. List the candidate notes.",
+      "3. READ EVERYTHING: Call read_note on every candidate note — do not skip any, even ones that seem less important. You must open each file individually.",
+      "4. CROSS-CHECK: After reading, note any contradictions or gaps between sources.",
+      "5. ANSWER: Only now write your final answer, citing every note you opened with [[wikilinks]].",
+      "HARD RULE: You are not allowed to mention, quote, or summarize a note unless you called read_note on it in this session. Zero exceptions.",
     ].join(" "),
   },
 };

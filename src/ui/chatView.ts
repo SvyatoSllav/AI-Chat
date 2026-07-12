@@ -84,7 +84,10 @@ export class ChatView extends ItemView {
     paintThemeIcon();
     themeBtn.addEventListener("click", async () => {
       const s = this.plugin.settings;
-      s.chatTheme = s.chatTheme === "auto" ? "dark" : s.chatTheme === "dark" ? "light" : "auto";
+      // Always toggle based on what's currently visible — avoids the "no-change"
+      // click that happens when auto matches the direction you want to switch to.
+      const currentlyDark = this.contentEl.classList.contains("zk-dark");
+      s.chatTheme = currentlyDark ? "light" : "dark";
       await this.plugin.saveSettings();
       this.applyTheme();
       paintThemeIcon();
@@ -557,6 +560,7 @@ export class ChatView extends ItemView {
 
     const thinking = this.renderThinkingRow();
     let finalBlock: HTMLElement | null = null;
+    let lastRunningStepEl: HTMLElement | null = null;
     try {
       const finalText = await runAgent(
         provider,
@@ -575,7 +579,14 @@ export class ChatView extends ItemView {
           },
           onStep: (step) => {
             thinking.hide();
-            this.renderStep(step);
+            if (step.status === "running") {
+              lastRunningStepEl = this.renderStep(step);
+            } else if (lastRunningStepEl) {
+              this.updateStep(lastRunningStepEl, step);
+              lastRunningStepEl = null;
+            } else {
+              this.renderStep(step);
+            }
           },
           confirmWrite: (name, args, preview) => this.askApproval(name, args, preview),
         },
@@ -608,8 +619,21 @@ export class ChatView extends ItemView {
     return el;
   }
 
-  private renderStep(step: AgentStep) {
+  private renderStep(step: AgentStep): HTMLElement {
     const el = this.msgsEl.createDiv({ cls: `vm-step vm-step-${step.status}` });
+    this.fillStep(el, step);
+    this.scroll();
+    return el;
+  }
+
+  private updateStep(el: HTMLElement, step: AgentStep) {
+    el.className = `vm-step vm-step-${step.status}`;
+    el.empty();
+    this.fillStep(el, step);
+    this.scroll();
+  }
+
+  private fillStep(el: HTMLElement, step: AgentStep) {
     const ic = el.createSpan({ cls: "vm-step-icon" });
     setIcon(ic, TOOL_ICONS[step.name] ?? "wrench");
     const target = step.args?.path ?? step.args?.query ?? step.args?.folder ?? "";
@@ -620,7 +644,6 @@ export class ChatView extends ItemView {
       det.createEl("summary", { text: "result" });
       det.createEl("pre", { text: step.output.slice(0, 1200) });
     }
-    this.scroll();
   }
 
   private askApproval(name: string, args: any, preview: ToolResult["preview"] | null): Promise<boolean> {

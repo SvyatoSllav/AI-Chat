@@ -72,6 +72,11 @@
   --background-modifier-border: var(--zkc-border);
   --background-modifier-hover: var(--zkc-highest);
   --background-modifier-form-field: transparent;
+  --interactive-normal: var(--zkc-panel);
+  --interactive-hover: var(--zkc-high);
+  --interactive-accent: var(--zkc-accent-bg);
+  --interactive-accent-hover: var(--zkc-accent-bg);
+  --button-color: var(--zkc-text);
   --text-normal: var(--zkc-text);
   --text-muted: var(--zkc-muted);
   --text-faint: var(--zkc-faint);
@@ -173,6 +178,7 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
+  background: var(--zkc-bg);
 }
 .vm-msg {
   padding: 12px;
@@ -309,7 +315,7 @@
   width: 100%;
   text-align: left;
 }
-.zk-qa-card {
+.zettelkasten-ai .zk-qa-card {
   display: flex;
   align-items: center;
   justify-content: flex-start; /* override Obsidian's button justify-content:center */
@@ -344,10 +350,10 @@
   opacity: 0;
   transition: opacity 0.15s;
 }
-.zk-qa-card:hover {
+.zettelkasten-ai .zk-qa-card:hover {
   background: var(--zkc-high);
 }
-.zk-qa-card:hover::before {
+.zettelkasten-ai .zk-qa-card:hover::before {
   opacity: 1;
 }
 .zk-qa-icon {

@@ -87,20 +87,41 @@ export class ZettelkastenAISettingTab extends PluginSettingTab {
     if (s.provider === "hosted") {
       this.displayAccount(containerEl);
     } else if (s.provider === "openai-compatible") {
+      new Setting(containerEl)
+        .setName("Preset")
+        .setDesc("Quickly fill in the URL and model for a common local provider.")
+        .addDropdown((d) => {
+          d.addOption("", "— choose preset —");
+          d.addOption("ollama", "Ollama (localhost:11434)");
+          d.addOption("lmstudio", "LM Studio (localhost:1234)");
+          d.addOption("deepseek", "DeepSeek API");
+          d.addOption("openrouter", "OpenRouter");
+          d.setValue("").onChange(async (v) => {
+            if (!v) return;
+            const presets: Record<string, { baseUrl: string; model: string; apiKey: string }> = {
+              ollama: { baseUrl: "http://localhost:11434/v1", model: "qwen2.5:1.5b", apiKey: "ollama" },
+              lmstudio: { baseUrl: "http://localhost:1234/v1", model: "local-model", apiKey: "lm-studio" },
+              deepseek: { baseUrl: "https://api.deepseek.com/v1", model: "deepseek-chat", apiKey: "" },
+              openrouter: { baseUrl: "https://openrouter.ai/api/v1", model: "meta-llama/llama-3.1-8b-instruct:free", apiKey: "" },
+            };
+            const p = presets[v];
+            if (p) { s.baseUrl = p.baseUrl; s.model = p.model; if (p.apiKey && !s.apiKey) s.apiKey = p.apiKey; await save(); this.display(); }
+          });
+        });
       new Setting(containerEl).setName("Base URL").addText((t) =>
         t.setValue(s.baseUrl).onChange(async (v) => {
           s.baseUrl = v.trim();
           await save();
         }),
       );
-      new Setting(containerEl).setName("API key").addText((t) => {
+      new Setting(containerEl).setName("API key").setDesc("Leave as 'ollama' for Ollama. Not needed for LM Studio.").addText((t) => {
         t.inputEl.type = "password";
         t.setValue(s.apiKey).onChange(async (v) => {
           s.apiKey = v.trim();
           await save();
         });
       });
-      new Setting(containerEl).setName("Model").addText((t) =>
+      new Setting(containerEl).setName("Model").setDesc("For Ollama: name of the pulled model (e.g. qwen2.5:1.5b). For LM Studio: name shown in the app.").addText((t) =>
         t.setValue(s.model).onChange(async (v) => {
           s.model = v.trim();
           await save();
